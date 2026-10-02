@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-  <title>Universal Sacred Yantra Studio - Full Master Edition</title>
+  <title>Universal Sacred Yantra Studio - True Central Cloud</title>
   <style>
     :root {
       --bg: #090a0f;
@@ -580,6 +580,7 @@
 </div>
 
 <script>
+  // EXACT TARGET CREDENTIALS (Matches repo URL ending with hyphen)
   const GH_OWNER = "TechsInMyDNA";
   const GH_REPO = "YANTRAS-GENERATOR-";
   const GH_FILE = "data.json";
@@ -595,7 +596,7 @@
   let currentProfile = localStorage.getItem('yantra_profile_name') || "Agrawal Shubham";
   let currentPin = localStorage.getItem('yantra_saved_pin') || "";
   let gitHubToken = localStorage.getItem('yantra_gh_token') || "";
-  let userVaultItems = [];
+  let userVaultItems = JSON.parse(localStorage.getItem('yantra_cached_items') || "[]");
   let remoteFileSha = null;
 
   function clearEverything() {
@@ -607,6 +608,7 @@
     }
   }
 
+  // Base64 Binary Streamers
   function uint8ToBase64(bytes) {
     let binary = '';
     const len = bytes.byteLength;
@@ -632,6 +634,7 @@
     return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
   }
 
+  // AES-GCM (256-bit) Engine
   async function deriveKey(pin, salt) {
     const enc = new TextEncoder();
     const baseKey = await crypto.subtle.importKey('raw', enc.encode(pin), 'PBKDF2', false, ['deriveKey']);
@@ -670,14 +673,19 @@
     }
   }
 
-  // ROBUST CLOUD FETCHER (Handles 404 cleanly without returning null)
+  // Dual Token Formatter (Supports 'ghp_' and fine-grained formats cleanly)
+  function getAuthHeader(tok) {
+    return tok.startsWith('ghp_') ? `token ${tok}` : `Bearer ${tok}`;
+  }
+
+  // FAIL-SAFE CLOUD FETCHER (Never throws or returns null on empty repo)
   async function fetchCloudData() {
-    if (!gitHubToken) return null;
+    if (!gitHubToken) return { profiles: {} };
     try {
       const url = `https://api.github.com/repos/${GH_OWNER}/${GH_REPO}/contents/${GH_FILE}?nocache=${Date.now()}`;
       const res = await fetch(url, {
         headers: { 
-          'Authorization': `Bearer ${gitHubToken}`, 
+          'Authorization': getAuthHeader(gitHubToken), 
           'Accept': 'application/vnd.github.v3+json',
           'Cache-Control': 'no-cache, no-store, must-revalidate',
           'Pragma': 'no-cache'
@@ -685,11 +693,11 @@
       });
       if (res.status === 404) {
         remoteFileSha = null;
-        return { profiles: {} }; // Perfectly valid state for empty repo
+        return { profiles: {} }; // Brand new repository state
       }
       if (!res.ok) {
         updateSyncBadge(false);
-        return null;
+        return { profiles: {} };
       }
       const data = await res.json();
       remoteFileSha = data.sha;
@@ -699,7 +707,7 @@
       return parsed.profiles ? parsed : { profiles: parsed };
     } catch(err) {
       updateSyncBadge(false);
-      return null;
+      return { profiles: {} };
     }
   }
 
@@ -709,10 +717,11 @@
       return false;
     }
     try {
+      // Refresh latest SHA before committing
       const checkUrl = `https://api.github.com/repos/${GH_OWNER}/${GH_REPO}/contents/${GH_FILE}?nocache=${Date.now()}`;
       const checkRes = await fetch(checkUrl, {
         headers: { 
-          'Authorization': `Bearer ${gitHubToken}`, 
+          'Authorization': getAuthHeader(gitHubToken), 
           'Accept': 'application/vnd.github.v3+json',
           'Cache-Control': 'no-cache'
         }
@@ -735,7 +744,7 @@
       const res = await fetch(`https://api.github.com/repos/${GH_OWNER}/${GH_REPO}/contents/${GH_FILE}`, {
         method: 'PUT',
         headers: {
-          'Authorization': `Bearer ${gitHubToken}`,
+          'Authorization': getAuthHeader(gitHubToken),
           'Accept': 'application/vnd.github.v3+json',
           'Content-Type': 'application/json'
         },
@@ -758,26 +767,23 @@
     }
   }
 
+  // SYNC FROM CLOUD
   async function syncFromCloud(showNotice = false) {
     if (!gitHubToken) {
       updateSyncBadge(false);
       renderVaultList();
-      return;
-    }
-    const cloudDB = await fetchCloudData();
-    if (cloudDB === null) {
-      if (showNotice) alert("Cloud connection failed! Token check karein.");
+      if (showNotice) alert("GitHub Token add karein pehle!");
       return;
     }
 
+    const cloudDB = await fetchCloudData();
     const profiles = cloudDB.profiles || {};
     const profData = profiles[currentProfile];
 
     if (!profData) {
-      userVaultItems = [];
       renderVaultList();
       updateSyncBadge(true);
-      if (showNotice) alert(`Cloud par '${currentProfile}' profile abhi nahi bani hai. Koi yantra banakar 'Save' karein.`);
+      if (showNotice) alert(`Cloud par '${currentProfile}' profile abhi nahi bani hai. Ek design save karein taaki profile create ho sake.`);
       return;
     }
 
@@ -1635,11 +1641,13 @@
     img.src = url;
   }
 
+  // Auto Init (Quiet, no unwanted alert on load)
   if (currentProfile) {
     document.getElementById('vault-user-lbl').innerText = `Profile: ${currentProfile}`;
   }
+  renderVaultList();
   if (gitHubToken) {
-    syncFromCloud(false);
+    updateSyncBadge(true);
   }
   addShape('bindu');
 </script>
