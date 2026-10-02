@@ -543,7 +543,7 @@
       </div>
     </div>
     <div id="step-token" style="display:none;">
-      <div id="lbl-detected-target" style="font-size:10px; color:var(--gold); margin-bottom:4px;">Target: TechsInMyDNA / YANTRAS-GENERATOR-</div>
+      <div id="lbl-detected-target" style="font-size:10px; color:var(--gold); margin-bottom:4px;">Target: TechIsInMyDNA / YANTRAS-GENERATOR-</div>
       <div style="font-size:10px; color:var(--text-muted); margin-bottom:4px;">GitHub Personal Access Token (PAT):</div>
       <input type="password" id="inp-gh-token" placeholder="ghp_xxxxxxxxxxxx">
       <div style="display:flex; gap:6px; margin-top:8px;">
@@ -580,8 +580,10 @@
 </div>
 
 <script>
-  const GH_OWNER = "TechsInMyDNA";
+  // EXACT DITTO REPO & USERNAME FROM IMAGE 2
+  const GH_OWNER = "TechIsInMyDNA";
   const GH_REPO = "YANTRAS-GENERATOR-";
+  const GH_BRANCH = "main";
   const GH_FILE = "data.json";
 
   const MAX = 1000;
@@ -671,17 +673,17 @@
   }
 
   function getCleanHeaders() {
+    const tok = gitHubToken.trim();
     return {
-      'Authorization': `token ${gitHubToken.trim()}`,
-      'Accept': 'application/vnd.github.v3+json'
+      'Authorization': `token ${tok}`,
+      'Accept': 'application/vnd.github+json'
     };
   }
 
-  // FAIL-SAFE FETCH: Zero custom caching headers to prevent CORS preflight drops
   async function fetchCloudData() {
     if (!gitHubToken) return { profiles: {} };
     try {
-      const url = `https://api.github.com/repos/${GH_OWNER}/${GH_REPO}/contents/${GH_FILE}?_t=${Date.now()}`;
+      const url = `https://api.github.com/repos/${GH_OWNER}/${GH_REPO}/contents/${GH_FILE}?ref=${GH_BRANCH}&_t=${Date.now()}`;
       const res = await fetch(url, {
         method: 'GET',
         headers: getCleanHeaders()
@@ -712,9 +714,9 @@
       return false;
     }
     try {
-      // Refresh SHA softly
+      // 1. Refresh latest SHA softly before committing
       try {
-        const checkUrl = `https://api.github.com/repos/${GH_OWNER}/${GH_REPO}/contents/${GH_FILE}?_t=${Date.now()}`;
+        const checkUrl = `https://api.github.com/repos/${GH_OWNER}/${GH_REPO}/contents/${GH_FILE}?ref=${GH_BRANCH}&_t=${Date.now()}`;
         const checkRes = await fetch(checkUrl, {
           method: 'GET',
           headers: getCleanHeaders()
@@ -727,33 +729,42 @@
         }
       } catch(e) {}
 
+      // 2. Safe Base64 Payload creation
       const jsonString = JSON.stringify(cloudJson, null, 2);
       const jsonBytes = new TextEncoder().encode(jsonString);
       const base64Content = uint8ToBase64(jsonBytes);
 
       const body = {
         message: `Live Sync Profile & Yantras [${new Date().toISOString()}]`,
-        content: base64Content
+        content: base64Content,
+        branch: GH_BRANCH
       };
-      if (remoteFileSha) body.sha = remoteFileSha;
+      if (remoteFileSha) {
+        body.sha = remoteFileSha;
+      }
 
+      // 3. Direct REST API PUT Request
       const res = await fetch(`https://api.github.com/repos/${GH_OWNER}/${GH_REPO}/contents/${GH_FILE}`, {
         method: 'PUT',
-        headers: getCleanHeaders(),
+        headers: {
+          ...getCleanHeaders(),
+          'Content-Type': 'application/json'
+        },
         body: JSON.stringify(body)
       });
+      
       const resData = await res.json();
       if (res.ok) {
         remoteFileSha = resData.content ? resData.content.sha : null;
         updateSyncBadge(true);
         return true;
       } else {
-        alert("GitHub Push Failed: " + (resData.message || "Error"));
+        alert("GitHub Push Failed: " + (resData.message || JSON.stringify(resData)));
         updateSyncBadge(false);
         return false;
       }
     } catch(e) {
-      alert("Network Error: GitHub connection fail ho gaya. Token scopes verify karein.");
+      alert("Network Error: GitHub connection fail ho gaya: " + e.message);
       updateSyncBadge(false);
       return false;
     }
@@ -763,7 +774,7 @@
     if (!gitHubToken) {
       updateSyncBadge(false);
       renderVaultList();
-      if (showNotice) alert("GitHub Token configure karein!");
+      if (showNotice) alert("GitHub Token add karein pehle!");
       return;
     }
 
