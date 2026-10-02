@@ -446,7 +446,7 @@
     <!-- 7. Vault Tab -->
     <div class="tab-body" id="t-vault">
       <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
-        <span id="vault-user-lbl" style="font-size:11px; font-weight:600; color:var(--gold);">Profile: Guest</span>
+        <span id="vault-user-lbl" style="font-size:11px; font-weight:600; color:var(--gold);">Profile: Agrawal Shubham</span>
         <div style="display:flex; gap:4px;">
           <button onclick="openProfileModal()">Switch User</button>
           <button onclick="forceSync()" class="sync-btn">Sync Now</button>
@@ -543,7 +543,7 @@
       </div>
     </div>
     <div id="step-token" style="display:none;">
-      <div style="font-size:10px; color:var(--gold); margin-bottom:4px;">Target: TechsInMyDNA / YANTRAS-GENERATOR</div>
+      <div style="font-size:10px; color:var(--gold); margin-bottom:4px;">Target: TechsInMyDNA / YANTRAS-GENERATOR-</div>
       <div style="font-size:10px; color:var(--text-muted); margin-bottom:4px;">GitHub Personal Access Token (PAT):</div>
       <input type="password" id="inp-gh-token" placeholder="ghp_xxxxxxxxxxxx">
       <div style="display:flex; gap:6px; margin-top:8px;">
@@ -580,8 +580,9 @@
 </div>
 
 <script>
+  // EXACT MATCH WITH YOUR GITHUB REPO NAME FROM URL:
   const GH_OWNER = "TechsInMyDNA";
-  const GH_REPO = "YANTRAS-GENERATOR";
+  const GH_REPO = "YANTRAS-GENERATOR-"; // FIXED: Attached exact hyphen '-' from URL
   const GH_FILE = "data.json";
 
   const MAX = 1000;
@@ -592,7 +593,7 @@
   let hIdx = -1;
   let showGrid = false;
 
-  let currentProfile = localStorage.getItem('yantra_profile_name') || "";
+  let currentProfile = localStorage.getItem('yantra_profile_name') || "Agrawal Shubham";
   let currentPin = localStorage.getItem('yantra_saved_pin') || "";
   let gitHubToken = localStorage.getItem('yantra_gh_token') || "";
   let vaultDB = JSON.parse(localStorage.getItem('yantra_local_vault') || "{}");
@@ -607,7 +608,7 @@
     }
   }
 
-  // Pure UTF-8 to Base64 & Inverse Streamers (Fixes character crashes)
+  // Pure UTF-8 to Base64 & Inverse Streamers
   function uint8ToBase64(bytes) {
     let binary = '';
     const len = bytes.byteLength;
@@ -665,7 +666,7 @@
     }
   }
 
-  // Zero-Conflict Live Synchronizer
+  // Safe Live Synchronizer
   async function fetchRemoteData() {
     if (!gitHubToken) return null;
     try {
@@ -679,13 +680,17 @@
         remoteFileSha = null;
         return {};
       }
-      if (!res.ok) return null;
+      if (!res.ok) {
+        updateSyncBadge(false);
+        return null;
+      }
       const data = await res.json();
       remoteFileSha = data.sha;
       const bytes = base64ToUint8(data.content);
       const content = new TextDecoder().decode(bytes);
       return JSON.parse(content);
     } catch(err) {
+      updateSyncBadge(false);
       return null;
     }
   }
@@ -693,7 +698,6 @@
   async function pushRemoteData(jsonData) {
     if (!gitHubToken) return false;
     try {
-      // Step 1: Pre-fetch latest remote SHA to avoid any 409 conflict
       try {
         const checkRes = await fetch(`https://api.github.com/repos/${GH_OWNER}/${GH_REPO}/contents/${GH_FILE}?t=${Date.now()}`, {
           headers: { 'Authorization': `token ${gitHubToken}`, 'Accept': 'application/vnd.github.v3+json' }
@@ -704,7 +708,6 @@
         }
       } catch(e) {}
 
-      // Step 2: Binary Safe Encoding
       const jsonString = JSON.stringify(jsonData, null, 2);
       const jsonBytes = new TextEncoder().encode(jsonString);
       const base64Content = uint8ToBase64(jsonBytes);
@@ -729,8 +732,12 @@
         remoteFileSha = resData.content ? resData.content.sha : null;
         updateSyncBadge(true);
         return true;
+      } else {
+        alert("GitHub Sync Error: " + (resData.message || "Request failed"));
       }
-    } catch(e) {}
+    } catch(e) {
+      alert("Network Error: GitHub connect nahi ho paya!");
+    }
     updateSyncBadge(false);
     return false;
   }
@@ -907,7 +914,7 @@
     document.getElementById(id).style.display = 'none';
   }
 
-  // Mathematical Geometry Engine
+  // Pure Vector Geometry Engine
   function fitStage() {
     const zone = document.getElementById('canvas-zone');
     const size = Math.min(zone.clientWidth - 8, zone.clientHeight - 8);
@@ -1458,10 +1465,6 @@
     selectedId = items.length ? items[items.length - 1].id : null;
     recordHistory();
     render();
-  }
-
-  function clearAll() {
-    clearEverything();
   }
 
   function setTab(tabId) {
