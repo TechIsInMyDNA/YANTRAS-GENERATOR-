@@ -449,7 +449,7 @@
         <span id="vault-user-lbl" style="font-size:11px; font-weight:600; color:var(--gold);">Profile: Agrawal Shubham</span>
         <div style="display:flex; gap:4px;">
           <button onclick="openProfileModal()">Switch User</button>
-          <button onclick="forceSync()" class="sync-btn">Sync Now</button>
+          <button onclick="forceSync(true)" class="sync-btn">Sync Now</button>
         </div>
       </div>
       <div id="vault-list" style="display:flex; flex-direction:column; gap:4px;">
@@ -543,7 +543,7 @@
       </div>
     </div>
     <div id="step-token" style="display:none;">
-      <div id="lbl-detected-target" style="font-size:10px; color:var(--gold); margin-bottom:4px;">Target: Auto-Detecting...</div>
+      <div id="lbl-detected-target" style="font-size:10px; color:var(--gold); margin-bottom:4px;">Target: TechsInMyDNA / YANTRAS-GENERATOR-</div>
       <div style="font-size:10px; color:var(--text-muted); margin-bottom:4px;">GitHub Personal Access Token (PAT):</div>
       <input type="password" id="inp-gh-token" placeholder="ghp_xxxxxxxxxxxx">
       <div style="display:flex; gap:6px; margin-top:8px;">
@@ -580,24 +580,9 @@
 </div>
 
 <script>
-  // DYNAMIC TARGET IDENTIFIER (Prevents any Casing or Hyphen Mismatches)
-  function getRepoTarget() {
-    let owner = "TechsInMyDNA";
-    let repo = "YANTRAS-GENERATOR-";
-    try {
-      const host = window.location.hostname;
-      if (host.includes("github.io")) {
-        owner = host.split(".")[0];
-        const pathSegments = window.location.pathname.split("/").filter(Boolean);
-        if (pathSegments.length > 0) {
-          repo = pathSegments[0];
-        }
-      }
-    } catch(e) {}
-    return { owner, repo };
-  }
-
-  const { owner: GH_OWNER, repo: GH_REPO } = getRepoTarget();
+  // ABSOLUTE ROCK-SOLID REPOSITORY TARGET SPECIFICATION
+  const GH_OWNER = "TechsInMyDNA";
+  const GH_REPO = "YANTRAS-GENERATOR-";
   const GH_FILE = "data.json";
 
   const MAX = 1000;
@@ -681,14 +666,17 @@
     }
   }
 
-  // Safe Live Synchronizer
+  // Anti-Cache GitHub Fetcher
   async function fetchRemoteData() {
     if (!gitHubToken) return null;
     try {
-      const res = await fetch(`https://api.github.com/repos/${GH_OWNER}/${GH_REPO}/contents/${GH_FILE}?t=${Date.now()}`, {
+      const url = `https://api.github.com/repos/${GH_OWNER}/${GH_REPO}/contents/${GH_FILE}?nocache=${Date.now()}`;
+      const res = await fetch(url, {
         headers: { 
           'Authorization': `token ${gitHubToken}`, 
-          'Accept': 'application/vnd.github.v3+json' 
+          'Accept': 'application/vnd.github.v3+json',
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          'Pragma': 'no-cache'
         }
       });
       if (res.status === 404) {
@@ -710,12 +698,21 @@
     }
   }
 
-  async function pushRemoteData(jsonData) {
-    if (!gitHubToken) return false;
+  async function pushRemoteData(jsonData, showSuccessNotice = false) {
+    if (!gitHubToken) {
+      alert("Pehle GitHub Token daalkar connect karein!");
+      return false;
+    }
     try {
+      // 1. Fetch fresh remote SHA immediately before writing
       try {
-        const checkRes = await fetch(`https://api.github.com/repos/${GH_OWNER}/${GH_REPO}/contents/${GH_FILE}?t=${Date.now()}`, {
-          headers: { 'Authorization': `token ${gitHubToken}`, 'Accept': 'application/vnd.github.v3+json' }
+        const checkUrl = `https://api.github.com/repos/${GH_OWNER}/${GH_REPO}/contents/${GH_FILE}?nocache=${Date.now()}`;
+        const checkRes = await fetch(checkUrl, {
+          headers: { 
+            'Authorization': `token ${gitHubToken}`, 
+            'Accept': 'application/vnd.github.v3+json',
+            'Cache-Control': 'no-cache'
+          }
         });
         if (checkRes.ok) {
           const checkData = await checkRes.json();
@@ -723,6 +720,7 @@
         }
       } catch(e) {}
 
+      // 2. Binary UTF-8 Safe Encoding
       const jsonString = JSON.stringify(jsonData, null, 2);
       const jsonBytes = new TextEncoder().encode(jsonString);
       const base64Content = uint8ToBase64(jsonBytes);
@@ -746,6 +744,9 @@
       if (res.ok) {
         remoteFileSha = resData.content ? resData.content.sha : null;
         updateSyncBadge(true);
+        if (showSuccessNotice) {
+          alert("✅ Cloud Live Sync Successful!\n(data.json updated on GitHub)");
+        }
         return true;
       } else {
         alert("GitHub Sync Error: " + (resData.message || "Failed"));
@@ -795,7 +796,7 @@
     gitHubToken = tok;
     localStorage.setItem('yantra_gh_token', tok);
     closeModal('modal-sync');
-    await forceSync();
+    await forceSync(true);
   }
 
   function openProfileModal() {
@@ -817,7 +818,7 @@
     localStorage.setItem('yantra_saved_pin', pin);
     document.getElementById('vault-user-lbl').innerText = `Profile: ${name}`;
     closeModal('modal-profile');
-    await forceSync();
+    await forceSync(true);
   }
 
   function openSaveModal() {
@@ -847,20 +848,20 @@
     closeModal('modal-save');
     renderVaultList();
     setTab('t-vault');
-    await pushEncryptedVault();
+    await pushEncryptedVault(true);
   }
 
-  async function pushEncryptedVault() {
+  async function pushEncryptedVault(showNotice = false) {
     if (!currentProfile || !currentPin) return;
     const remoteData = (await fetchRemoteData()) || {};
     const plainString = JSON.stringify(vaultDB[currentProfile] || []);
     const encryptedPacket = await encryptData(plainString, currentPin);
     remoteData[currentProfile] = encryptedPacket;
-    const ok = await pushRemoteData(remoteData);
+    const ok = await pushRemoteData(remoteData, showNotice);
     if (ok) updateSyncBadge(true);
   }
 
-  async function forceSync() {
+  async function forceSync(showUserNotice = false) {
     renderVaultList();
     if (!gitHubToken) {
       updateSyncBadge(false);
@@ -869,20 +870,27 @@
 
     const remoteData = await fetchRemoteData();
     if (remoteData && remoteData[currentProfile]) {
+      if (!currentPin) {
+        currentPin = prompt(`PIN daalein to unlock profile '${currentProfile}':`) || "";
+        if (currentPin) localStorage.setItem('yantra_saved_pin', currentPin);
+      }
       if (currentPin) {
         const decryptedStr = await decryptData(remoteData[currentProfile], currentPin);
         if (decryptedStr) {
           vaultDB[currentProfile] = JSON.parse(decryptedStr);
           localStorage.setItem('yantra_local_vault', JSON.stringify(vaultDB));
           updateSyncBadge(true);
+          if (showUserNotice) alert("✅ Cloud data successfully synced & decrypted!");
         } else {
+          alert("Galat PIN! Cloud data decrypt nahi ho paya.");
           updateSyncBadge(false);
         }
       }
     } else if (remoteData && Object.keys(remoteData).length === 0 && vaultDB[currentProfile]) {
-      await pushEncryptedVault();
+      await pushEncryptedVault(showUserNotice);
     } else {
       updateSyncBadge(true);
+      if (showUserNotice) alert("✅ Live Synced! (Sabhi records updated hain)");
     }
     renderVaultList();
   }
@@ -923,7 +931,7 @@
     vaultDB[currentProfile] = (vaultDB[currentProfile] || []).filter(x => x.id !== id);
     localStorage.setItem('yantra_local_vault', JSON.stringify(vaultDB));
     renderVaultList();
-    await pushEncryptedVault();
+    await pushEncryptedVault(false);
   }
 
   function closeModal(id) {
@@ -1593,7 +1601,7 @@
     document.getElementById('vault-user-lbl').innerText = `Profile: ${currentProfile}`;
   }
   if (gitHubToken) {
-    forceSync();
+    forceSync(false);
   }
   addShape('bindu');
 </script>
