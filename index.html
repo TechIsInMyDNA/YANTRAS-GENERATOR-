@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-  <title>Universal Sacred Yantra Studio - True Central Cloud</title>
+  <title>Universal Sacred Yantra Studio - Total Ghost Encryption</title>
   <style>
     :root {
       --bg: #090a0f;
@@ -557,9 +557,9 @@
 <!-- Modal 2: Profile & PIN Setup -->
 <div class="modal-overlay" id="modal-profile">
   <div class="modal-card">
-    <h3>User Profile & Cloud PIN</h3>
+    <h3>User Profile & Master Key</h3>
     <input type="text" id="inp-profile-name" placeholder="Your Profile Name...">
-    <input type="password" id="inp-profile-pin" placeholder="Enter Secure PIN (4-8 digits)..." maxlength="8">
+    <input type="password" id="inp-profile-pin" placeholder="Enter Secure PIN (Master Key)..." maxlength="8">
     <div style="display:flex; gap:6px; margin-top:6px;">
       <button style="flex:1;" onclick="closeModal('modal-profile')">Cancel</button>
       <button class="primary" style="flex:1;" onclick="saveUserProfile()">Login / Unlock</button>
@@ -608,6 +608,7 @@
     }
   }
 
+  // Base64 Binary Streamers
   function uint8ToBase64(bytes) {
     let binary = '';
     const len = bytes.byteLength;
@@ -626,20 +627,7 @@
     return bytes;
   }
 
-  // Double SHA-256 Hasher (Obfuscates Profile Name and PIN completely)
-  async function hashIdentifier(input) {
-    const msgUint8 = new TextEncoder().encode(input.trim().toLowerCase() + "_yantra_zero_knowledge_salt");
-    const hashBuffer = await crypto.subtle.digest('SHA-256', msgUint8);
-    return Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, '0')).join('');
-  }
-
-  async function hashPin(pin) {
-    const msgUint8 = new TextEncoder().encode(pin + "_yantra_secure_salt_auth");
-    const hashBuffer = await crypto.subtle.digest('SHA-256', msgUint8);
-    return Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, '0')).join('');
-  }
-
-  // Military-Grade AES-256-GCM Engine (100,000 PBKDF2 Iterations)
+  // AES-256-GCM Total Payload Encryption (100,000 PBKDF2 Iterations)
   async function deriveKey(pin, salt) {
     const enc = new TextEncoder();
     const baseKey = await crypto.subtle.importKey('raw', enc.encode(pin), 'PBKDF2', false, ['deriveKey']);
@@ -652,27 +640,29 @@
     );
   }
 
-  async function encryptData(plainText, pin) {
+  async function encryptWholeDatabase(plainObj, pin) {
     const salt = crypto.getRandomValues(new Uint8Array(16));
     const iv = crypto.getRandomValues(new Uint8Array(12));
     const key = await deriveKey(pin, salt);
     const enc = new TextEncoder();
+    const plainText = JSON.stringify(plainObj);
     const encrypted = await crypto.subtle.encrypt({ name: 'AES-GCM', iv: iv }, key, enc.encode(plainText));
     return {
       salt: Array.from(salt),
       iv: Array.from(iv),
-      cipher: Array.from(new Uint8Array(encrypted))
+      cipher: uint8ToBase64(new Uint8Array(encrypted))
     };
   }
 
-  async function decryptData(packet, pin) {
+  async function decryptWholeDatabase(packet, pin) {
     try {
       const salt = new Uint8Array(packet.salt);
       const iv = new Uint8Array(packet.iv);
-      const cipher = new Uint8Array(packet.cipher);
+      const cipherBytes = base64ToUint8(packet.cipher);
       const key = await deriveKey(pin, salt);
-      const decrypted = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: iv }, key, cipher);
-      return new TextDecoder().decode(decrypted);
+      const decrypted = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: iv }, key, cipherBytes);
+      const plainText = new TextDecoder().decode(decrypted);
+      return JSON.parse(plainText);
     } catch(e) {
       return null;
     }
@@ -686,9 +676,9 @@
     };
   }
 
-  // ZERO-KNOWLEDGE CLOUD STORAGE ENGINE
+  // GITHUB PURE CIPHER GET & PUT
   async function fetchCloudData() {
-    if (!gitHubToken) return { vaultContainer: {} };
+    if (!gitHubToken) return null;
     try {
       const url = `https://api.github.com/repos/${GH_OWNER}/${GH_REPO}/contents/${GH_FILE}?ref=${GH_BRANCH}&_t=${Date.now()}`;
       const res = await fetch(url, {
@@ -697,25 +687,24 @@
       });
       if (res.status === 404) {
         remoteFileSha = null;
-        return { vaultContainer: {} };
+        return null; // Empty cloud state
       }
       if (!res.ok) {
         updateSyncBadge(false);
-        return { vaultContainer: {} };
+        return null;
       }
       const data = await res.json();
       remoteFileSha = data.sha;
       const bytes = base64ToUint8(data.content);
       const content = new TextDecoder().decode(bytes);
-      const parsed = JSON.parse(content);
-      return parsed.vaultContainer ? parsed : { vaultContainer: parsed.profiles || parsed };
+      return JSON.parse(content);
     } catch(err) {
       updateSyncBadge(false);
-      return { vaultContainer: {} };
+      return null;
     }
   }
 
-  async function pushCloudData(cloudJson) {
+  async function pushCloudData(packet) {
     if (!gitHubToken) {
       alert("GitHub token set nahi hai! Top bar par Offline badge par tap karein.");
       return false;
@@ -735,12 +724,12 @@
         }
       } catch(e) {}
 
-      const jsonString = JSON.stringify(cloudJson, null, 2);
+      const jsonString = JSON.stringify(packet, null, 2);
       const jsonBytes = new TextEncoder().encode(jsonString);
       const base64Content = uint8ToBase64(jsonBytes);
 
       const body = {
-        message: `Secured Encrypted Vault Sync [${new Date().toISOString()}]`,
+        message: `Total Ghost Encrypted Vault Sync [${new Date().toISOString()}]`,
         content: base64Content,
         branch: GH_BRANCH
       };
@@ -774,6 +763,7 @@
     }
   }
 
+  // CLOUD SYNC & DECRYPTION (Decrypts Name, Folders & Designs simultaneously)
   async function syncFromCloud(showNotice = false) {
     if (!gitHubToken) {
       updateSyncBadge(false);
@@ -782,20 +772,16 @@
       return;
     }
 
-    const cloudDB = await fetchCloudData();
-    const container = cloudDB.vaultContainer || {};
-    const profileKey = await hashIdentifier(currentProfile);
-    const profData = container[profileKey];
-
-    if (!profData) {
+    const cloudPacket = await fetchCloudData();
+    if (!cloudPacket || !cloudPacket.cipher) {
       renderVaultList();
       updateSyncBadge(true);
-      if (showNotice) alert(`Cloud par '${currentProfile}' profile abhi nahi bani hai. Ek design save karein taaki profile create ho sake.`);
+      if (showNotice) alert("Cloud par abhi koi encrypted vault nahi hai. Ek design save karein.");
       return;
     }
 
     if (!currentPin) {
-      currentPin = prompt(`Profile '${currentProfile}' cloud par mili! Apna PIN enter karein:`) || "";
+      currentPin = prompt("Cloud Vault Encrypted hai! Apna Master PIN daalein:") || "";
       if (currentPin) localStorage.setItem('yantra_saved_pin', currentPin);
     }
 
@@ -804,22 +790,22 @@
       return;
     }
 
-    const inputPinHash = await hashPin(currentPin);
-    if (profData.authVerification && profData.authVerification !== inputPinHash) {
-      alert("❌ Galat PIN! Cloud profile unlock nahi ho saki.");
-      updateSyncBadge(false);
-      return;
-    }
-
-    const decryptedStr = await decryptData(profData.encryptedVaultPayload, currentPin);
-    if (decryptedStr) {
-      userVaultItems = JSON.parse(decryptedStr);
+    // Attempting Decryption of the ENTIRE Database Container
+    const decryptedDB = await decryptWholeDatabase(cloudPacket, currentPin);
+    if (decryptedDB) {
+      // Profile Name & All Items decrypted safely in memory
+      currentProfile = decryptedDB.profileName || currentProfile;
+      userVaultItems = decryptedDB.yantras || [];
+      
+      localStorage.setItem('yantra_profile_name', currentProfile);
       localStorage.setItem('yantra_cached_items', JSON.stringify(userVaultItems));
+      document.getElementById('vault-user-lbl').innerText = `Profile: ${currentProfile}`;
+      
       updateSyncBadge(true);
       renderVaultList();
-      if (showNotice) alert(`✅ Live Sync Successful! '${currentProfile}' ke ${userVaultItems.length} yantras cloud se load ho gaye.`);
+      if (showNotice) alert(`✅ Live Sync Successful! Decrypted Profile: '${currentProfile}' (${userVaultItems.length} Designs).`);
     } else {
-      alert("❌ Decryption error! PIN galat hai.");
+      alert("❌ Decryption Failed! PIN galat hai.");
       updateSyncBadge(false);
     }
   }
@@ -847,26 +833,20 @@
     renderVaultList();
     setTab('t-vault');
 
-    // High Level Security Encryption (Masks Profile & Encrypts Entire Body)
-    const cloudDB = (await fetchCloudData()) || { vaultContainer: {} };
-    if (!cloudDB.vaultContainer) cloudDB.vaultContainer = {};
-
-    const profileKey = await hashIdentifier(currentProfile);
-    const pinH = await hashPin(currentPin);
-    const encryptedPacket = await encryptData(JSON.stringify(userVaultItems), currentPin);
-
-    // ZERO-KNOWLEDGE STORAGE: Name is hashed, Data is 256-bit encrypted
-    cloudDB.vaultContainer[profileKey] = {
-      profileHash: profileKey,
-      authVerification: pinH,
-      lastSyncedTimestamp: new Date().toISOString(),
-      encryptedVaultPayload: encryptedPacket
+    // Bundles Profile Name + Titles + Vector Designs into ONE Private Object
+    const internalDatabase = {
+      profileName: currentProfile,
+      yantras: userVaultItems,
+      timestamp: new Date().toISOString()
     };
 
-    const ok = await pushCloudData(cloudDB);
+    // Encrypt the ENTIRE object. Not even a single letter of Name or Title escapes.
+    const ghostPacket = await encryptWholeDatabase(internalDatabase, currentPin);
+
+    const ok = await pushCloudData(ghostPacket);
     if (ok) {
       localStorage.setItem('yantra_cached_items', JSON.stringify(userVaultItems));
-      alert(`✅ '${title}' saved & profile synced with End-to-End Encryption in data.json!`);
+      alert(`✅ '${title}' saved! data.json par Profile Name aur Yantras 100% Encrypted hain.`);
     }
   }
 
@@ -875,21 +855,14 @@
     userVaultItems = userVaultItems.filter(x => x.id !== id);
     renderVaultList();
 
-    const cloudDB = (await fetchCloudData()) || { vaultContainer: {} };
-    if (!cloudDB.vaultContainer) cloudDB.vaultContainer = {};
-
-    const profileKey = await hashIdentifier(currentProfile);
-    const pinH = await hashPin(currentPin);
-    const encryptedPacket = await encryptData(JSON.stringify(userVaultItems), currentPin);
-
-    cloudDB.vaultContainer[profileKey] = {
-      profileHash: profileKey,
-      authVerification: pinH,
-      lastSyncedTimestamp: new Date().toISOString(),
-      encryptedVaultPayload: encryptedPacket
+    const internalDatabase = {
+      profileName: currentProfile,
+      yantras: userVaultItems,
+      timestamp: new Date().toISOString()
     };
 
-    await pushCloudData(cloudDB);
+    const ghostPacket = await encryptWholeDatabase(internalDatabase, currentPin);
+    await pushCloudData(ghostPacket);
   }
 
   function renderVaultList() {
@@ -973,7 +946,7 @@
     const name = document.getElementById('inp-profile-name').value.trim();
     const pin = document.getElementById('inp-profile-pin').value.trim();
     if (!name || !pin) {
-      alert("Profile name aur PIN dono daalein!");
+      alert("Profile name aur Master PIN dono daalein!");
       return;
     }
     currentProfile = name;
