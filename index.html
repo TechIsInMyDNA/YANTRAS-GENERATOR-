@@ -546,7 +546,6 @@
       <div style="font-size:10px; color:var(--gold); margin-bottom:4px;">Target: TechsInMyDNA / YANTRAS-GENERATOR</div>
       <div style="font-size:10px; color:var(--text-muted); margin-bottom:4px;">GitHub Personal Access Token (PAT):</div>
       <input type="password" id="inp-gh-token" placeholder="ghp_xxxxxxxxxxxx">
-      <div style="font-size:9.5px; color:#ef4444; margin-top:2px;">*Token me 'repo' (Full Control) checked hona zaroori hai.</div>
       <div style="display:flex; gap:6px; margin-top:8px;">
         <button style="flex:1;" onclick="closeModal('modal-sync')">Close</button>
         <button class="primary" style="flex:1;" onclick="saveGitHubToken()">Save & Connect</button>
@@ -599,7 +598,6 @@
   let vaultDB = JSON.parse(localStorage.getItem('yantra_local_vault') || "{}");
   let remoteFileSha = null;
 
-  // Clear everything including bindu
   function clearEverything() {
     if (confirm("Poora canvas aur bindu clear karna hai?")) {
       items = [];
@@ -647,7 +645,6 @@
     }
   }
 
-  // Robust Fetch with automatic 404 & Empty repo handling
   async function fetchRemoteData() {
     if (!gitHubToken) return null;
     try {
@@ -671,7 +668,6 @@
     }
   }
 
-  // Safe Push with Direct Commits
   async function pushRemoteData(jsonData) {
     if (!gitHubToken) {
       alert("Pehle GitHub Token configure karein!");
@@ -712,12 +708,8 @@
         remoteFileSha = resData.content ? resData.content.sha : null;
         updateSyncBadge(true);
         return true;
-      } else {
-        alert("GitHub Write Error: " + (resData.message || "Token Permissions ya Repo Access Check Karein"));
       }
-    } catch(e) {
-      alert("Network Error: GitHub connection fail ho gaya!");
-    }
+    } catch(e) {}
     updateSyncBadge(false);
     return false;
   }
@@ -816,42 +808,47 @@
 
   async function pushEncryptedVault() {
     if (!currentProfile || !currentPin) return;
-    if (!gitHubToken) {
-      alert("Saved locally! GitHub par sync karne ke liye '⚡ Offline' par tap karke token daalein.");
-      return;
-    }
     const remoteData = (await fetchRemoteData()) || {};
     const plainString = JSON.stringify(vaultDB[currentProfile] || []);
     const encryptedPacket = await encryptData(plainString, currentPin);
     remoteData[currentProfile] = encryptedPacket;
-    const ok = await pushRemoteData(remoteData);
-    if (ok) alert("Encrypted & Synced to GitHub data.json successfully!");
+    await pushRemoteData(remoteData);
   }
 
   async function forceSync() {
-    renderVaultList();
+    if (!currentPin) {
+      const askPin = prompt(`Profile '${currentProfile}' ka PIN daalein to view/sync vault:`);
+      if (!askPin) {
+        renderVaultList();
+        return;
+      }
+      currentPin = askPin;
+      sessionStorage.setItem('yantra_profile_pin', askPin);
+    }
+
     if (!gitHubToken) {
       updateSyncBadge(false);
+      renderVaultList();
       return;
     }
+
     const remoteData = await fetchRemoteData();
     if (remoteData && remoteData[currentProfile] && currentPin) {
       const decryptedStr = await decryptData(remoteData[currentProfile], currentPin);
       if (decryptedStr) {
         vaultDB[currentProfile] = JSON.parse(decryptedStr);
         localStorage.setItem('yantra_local_vault', JSON.stringify(vaultDB));
-        renderVaultList();
         updateSyncBadge(true);
       } else {
-        alert("Is profile ka PIN cloud data se match nahi ho raha!");
+        alert("Galat PIN! Remote profile decrypt nahi ho saki.");
         updateSyncBadge(false);
       }
     } else if (remoteData && Object.keys(remoteData).length === 0 && vaultDB[currentProfile]) {
       await pushEncryptedVault();
     } else {
       updateSyncBadge(true);
-      renderVaultList();
     }
+    renderVaultList();
   }
 
   function renderVaultList() {
@@ -897,7 +894,7 @@
     document.getElementById(id).style.display = 'none';
   }
 
-  // Pure Canvas Geometry
+  // Pure Canvas Engine
   function fitStage() {
     const zone = document.getElementById('canvas-zone');
     const size = Math.min(zone.clientWidth - 8, zone.clientHeight - 8);
@@ -1232,7 +1229,7 @@
         d = `
           <circle cx="0" cy="0" r="150" fill="none" stroke="${c}" stroke-width="${sw}"/>
           <circle cx="0" cy="0" r="170" fill="none" stroke="${c}" stroke-width="${sw * 0.8}"/>
-          <circle cx="0" cy="0" r="190" fill="none" stroke="${c}" stroke-width="${sw}"/>
+          <circle cx="0" cy="190" r="190" fill="none" stroke="${c}" stroke-width="${sw}"/>
         `;
         break;
       case 'square':
