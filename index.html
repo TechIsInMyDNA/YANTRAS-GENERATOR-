@@ -635,18 +635,21 @@
     }
   }
 
+  // Enhanced Fetch Engine: Handles 404 cleanly without throwing error
   async function fetchRemoteData() {
     if (!gitHubToken) return null;
     try {
       const res = await fetch(`https://api.github.com/repos/${GH_OWNER}/${GH_REPO}/contents/${GH_FILE}`, {
         headers: { 
-          'Authorization': `Bearer ${gitHubToken}`, 
+          'Authorization': `token ${gitHubToken}`, 
           'Accept': 'application/vnd.github.v3+json' 
         }
       });
-      if (res.status === 404) return {};
+      if (res.status === 404) {
+        remoteFileSha = null; // Clean file initialization
+        return {};
+      }
       if (!res.ok) {
-        console.error("Fetch status:", res.status);
         return null;
       }
       const data = await res.json();
@@ -654,14 +657,30 @@
       const content = decodeURIComponent(escape(atob(data.content.replace(/\s/g, ''))));
       return JSON.parse(content);
     } catch(err) {
-      console.error(err);
       return null;
     }
   }
 
+  // Safe Push Engine: Auto-checks SHA before committing
   async function pushRemoteData(jsonData) {
-    if (!gitHubToken) return false;
+    if (!gitHubToken) {
+      alert("Pehle GitHub Token configure karein!");
+      return false;
+    }
     try {
+      // Step 1: Ensure we have the latest SHA if file exists
+      if (!remoteFileSha) {
+        try {
+          const checkRes = await fetch(`https://api.github.com/repos/${GH_OWNER}/${GH_REPO}/contents/${GH_FILE}`, {
+            headers: { 'Authorization': `token ${gitHubToken}`, 'Accept': 'application/vnd.github.v3+json' }
+          });
+          if (checkRes.ok) {
+            const checkData = await checkRes.json();
+            remoteFileSha = checkData.sha;
+          }
+        } catch(e){}
+      }
+
       const contentStr = unescape(encodeURIComponent(JSON.stringify(jsonData, null, 2)));
       const base64Content = btoa(contentStr);
       const body = {
@@ -673,7 +692,7 @@
       const res = await fetch(`https://api.github.com/repos/${GH_OWNER}/${GH_REPO}/contents/${GH_FILE}`, {
         method: 'PUT',
         headers: {
-          'Authorization': `Bearer ${gitHubToken}`,
+          'Authorization': `token ${gitHubToken}`,
           'Accept': 'application/vnd.github.v3+json',
           'Content-Type': 'application/json'
         },
@@ -681,14 +700,14 @@
       });
       const resData = await res.json();
       if (res.ok) {
-        remoteFileSha = resData.content.sha;
+        remoteFileSha = resData.content ? resData.content.sha : null;
         updateSyncBadge(true);
         return true;
       } else {
-        alert("GitHub Write Error: " + (resData.message || "Token Permissions Check Karein"));
+        alert("GitHub Error: " + (resData.message || "Write permission check karein"));
       }
     } catch(e) {
-      alert("Network Error: GitHub connect nahi ho paya!");
+      alert("Network Error: GitHub connection fail ho gaya!");
     }
     updateSyncBadge(false);
     return false;
@@ -701,7 +720,7 @@
       el.style.color = "var(--success)";
       el.style.borderColor = "var(--success)";
     } else {
-      el.innerText = gitHubToken ? "⚠️️ Sync Issue" : "⚡ Offline";
+      el.innerText = gitHubToken ? "⚠ Sync Issue" : "⚡ Offline";
       el.style.color = "var(--text-muted)";
       el.style.borderColor = "var(--border)";
     }
@@ -788,10 +807,6 @@
 
   async function pushEncryptedVault() {
     if (!currentProfile || !currentPin) return;
-    if (!gitHubToken) {
-      alert("Saved locally! GitHub par sync karne ke liye '⚡ Offline' par tap karke token daalein.");
-      return;
-    }
     const remoteData = (await fetchRemoteData()) || {};
     const plainString = JSON.stringify(vaultDB[currentProfile] || []);
     const encryptedPacket = await encryptData(plainString, currentPin);
@@ -815,11 +830,10 @@
         renderVaultList();
         updateSyncBadge(true);
       } else {
-        alert("PIN is incorrect for remote profile data!");
+        alert("Is profile ka PIN cloud data se match nahi ho raha!");
         updateSyncBadge(false);
       }
     } else if (remoteData && Object.keys(remoteData).length === 0 && vaultDB[currentProfile]) {
-      // First time initialization of data.json on GitHub
       await pushEncryptedVault();
     } else {
       updateSyncBadge(true);
@@ -870,7 +884,7 @@
     document.getElementById(id).style.display = 'none';
   }
 
-  // Pure Vector Geometry Engine
+  // Pure Canvas Geometry
   function renderGridInternal() {
     const g = document.getElementById('grid-layer');
     if (!showGrid) {
@@ -1524,7 +1538,6 @@
     img.src = url;
   }
 
-  // Auto-init
   if (currentProfile) {
     document.getElementById('vault-user-lbl').innerText = `Profile: ${currentProfile}`;
   }
