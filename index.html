@@ -261,7 +261,6 @@
       font-family: inherit;
     }
 
-    /* Vault Modal / Card Styles */
     .vault-card {
       background: #090a0f;
       border: 1px solid var(--border);
@@ -315,6 +314,7 @@
       border-radius: 10px;
       background: #1e2233;
       border: 1px solid var(--border);
+      cursor: pointer;
     }
   </style>
 </head>
@@ -529,7 +529,7 @@
   </div>
 </div>
 
-<!-- Modal 1: GitHub Settings (Passphrase Protected) -->
+<!-- Modal 1: GitHub Settings -->
 <div class="modal-overlay" id="modal-sync">
   <div class="modal-card">
     <h3>GitHub Live Sync Settings</h3>
@@ -542,12 +542,12 @@
       </div>
     </div>
     <div id="step-token" style="display:none;">
-      <div style="font-size:10px; color:var(--gold); margin-bottom:4px;">Hardcoded: TechsInMyDNA / YANTRAS-GENERATOR</div>
+      <div style="font-size:10px; color:var(--gold); margin-bottom:4px;">Target: TechsInMyDNA / YANTRAS-GENERATOR</div>
       <div style="font-size:10px; color:var(--text-muted); margin-bottom:4px;">GitHub Personal Access Token (PAT):</div>
       <input type="password" id="inp-gh-token" placeholder="ghp_xxxxxxxxxxxx">
       <div style="display:flex; gap:6px; margin-top:8px;">
         <button style="flex:1;" onclick="closeModal('modal-sync')">Close</button>
-        <button class="primary" style="flex:1;" onclick="saveGitHubToken()">Save & Connect</button>
+        <button class="primary" style="flex:1;" onclick="saveGitHubToken()">Save & Sync data.json</button>
       </div>
     </div>
   </div>
@@ -570,7 +570,7 @@
 <div class="modal-overlay" id="modal-save">
   <div class="modal-card">
     <h3>Save Yantra to Cloud Vault</h3>
-    <input type="text" id="inp-yantra-name" placeholder="Yantra Title (e.g. Maha Lakshmi)...">
+    <input type="text" id="inp-yantra-name" placeholder="Yantra Title (e.g. Sri Chakra, Durga)...">
     <div style="display:flex; gap:6px; margin-top:6px;">
       <button style="flex:1;" onclick="closeModal('modal-save')">Cancel</button>
       <button class="primary" style="flex:1;" onclick="confirmSaveYantra()">Save Encrypted</button>
@@ -579,7 +579,6 @@
 </div>
 
 <script>
-  // Hardcoded Repository Credentials from user image
   const GH_OWNER = "TechsInMyDNA";
   const GH_REPO = "YANTRAS-GENERATOR";
   const GH_FILE = "data.json";
@@ -592,14 +591,12 @@
   let hIdx = -1;
   let showGrid = false;
 
-  // Profile & Encryption State
   let currentProfile = localStorage.getItem('yantra_profile_name') || "";
-  let currentPin = "";
+  let currentPin = sessionStorage.getItem('yantra_profile_pin') || "";
   let gitHubToken = localStorage.getItem('yantra_gh_token') || "";
-  let vaultDB = {}; // Decrypted in-memory store: { ProfileName: [ {id, name, date, items} ] }
+  let vaultDB = JSON.parse(localStorage.getItem('yantra_local_vault') || "{}");
   let remoteFileSha = null;
 
-  // Military Level AES-GCM (256-bit) Crypto Implementation
   async function deriveKey(pin, salt) {
     const enc = new TextEncoder();
     const baseKey = await crypto.subtle.importKey('raw', enc.encode(pin), 'PBKDF2', false, ['deriveKey']);
@@ -638,15 +635,20 @@
     }
   }
 
-  // Live GitHub Sync Engine
   async function fetchRemoteData() {
     if (!gitHubToken) return null;
     try {
       const res = await fetch(`https://api.github.com/repos/${GH_OWNER}/${GH_REPO}/contents/${GH_FILE}`, {
-        headers: { 'Authorization': `token ${gitHubToken}`, 'Accept': 'application/vnd.github.v3+json' }
+        headers: { 
+          'Authorization': `Bearer ${gitHubToken}`, 
+          'Accept': 'application/vnd.github.v3+json' 
+        }
       });
       if (res.status === 404) return {};
-      if (!res.ok) throw new Error("Sync failed");
+      if (!res.ok) {
+        console.error("Fetch status:", res.status);
+        return null;
+      }
       const data = await res.json();
       remoteFileSha = data.sha;
       const content = decodeURIComponent(escape(atob(data.content.replace(/\s/g, ''))));
@@ -671,7 +673,7 @@
       const res = await fetch(`https://api.github.com/repos/${GH_OWNER}/${GH_REPO}/contents/${GH_FILE}`, {
         method: 'PUT',
         headers: {
-          'Authorization': `token ${gitHubToken}`,
+          'Authorization': `Bearer ${gitHubToken}`,
           'Accept': 'application/vnd.github.v3+json',
           'Content-Type': 'application/json'
         },
@@ -682,9 +684,11 @@
         remoteFileSha = resData.content.sha;
         updateSyncBadge(true);
         return true;
+      } else {
+        alert("GitHub Write Error: " + (resData.message || "Token Permissions Check Karein"));
       }
     } catch(e) {
-      console.error(e);
+      alert("Network Error: GitHub connect nahi ho paya!");
     }
     updateSyncBadge(false);
     return false;
@@ -697,13 +701,12 @@
       el.style.color = "var(--success)";
       el.style.borderColor = "var(--success)";
     } else {
-      el.innerText = gitHubToken ? "⚠️ Sync Issue" : "⚡ Offline";
+      el.innerText = gitHubToken ? "⚠️️ Sync Issue" : "⚡ Offline";
       el.style.color = "var(--text-muted)";
       el.style.borderColor = "var(--border)";
     }
   }
 
-  // Modals & User Passphrase Flow
   function openSyncModal() {
     document.getElementById('modal-sync').style.display = 'flex';
     document.getElementById('step-passphrase').style.display = 'block';
@@ -718,17 +721,17 @@
       document.getElementById('step-token').style.display = 'block';
       document.getElementById('inp-gh-token').value = gitHubToken || '';
     } else {
-      alert("Invalid Security Passphrase!");
+      alert("Galat Passphrase!");
     }
   }
 
-  function saveGitHubToken() {
+  async function saveGitHubToken() {
     const tok = document.getElementById('inp-gh-token').value.trim();
     if (!tok) return;
     gitHubToken = tok;
     localStorage.setItem('yantra_gh_token', tok);
     closeModal('modal-sync');
-    forceSync();
+    await forceSync();
   }
 
   function openProfileModal() {
@@ -741,12 +744,13 @@
     const name = document.getElementById('inp-profile-name').value.trim();
     const pin = document.getElementById('inp-profile-pin').value.trim();
     if (!name || !pin) {
-      alert("Profile name aur PIN dono enter karein!");
+      alert("Profile name aur PIN dono daalein!");
       return;
     }
     currentProfile = name;
     currentPin = pin;
     localStorage.setItem('yantra_profile_name', name);
+    sessionStorage.setItem('yantra_profile_pin', pin);
     document.getElementById('vault-user-lbl').innerText = `Profile: ${name}`;
     closeModal('modal-profile');
     await forceSync();
@@ -764,7 +768,7 @@
   async function confirmSaveYantra() {
     const title = document.getElementById('inp-yantra-name').value.trim() || `Yantra_${Date.now()}`;
     if (!items.length) {
-      alert("Canvas par koi design nahi hai!");
+      alert("Canvas par koi element nahi hai!");
       return;
     }
     const newRecord = {
@@ -775,21 +779,29 @@
     };
     if (!vaultDB[currentProfile]) vaultDB[currentProfile] = [];
     vaultDB[currentProfile].push(newRecord);
+    localStorage.setItem('yantra_local_vault', JSON.stringify(vaultDB));
     closeModal('modal-save');
     renderVaultList();
+    setTab('t-vault');
     await pushEncryptedVault();
   }
 
   async function pushEncryptedVault() {
-    if (!gitHubToken || !currentProfile || !currentPin) return;
+    if (!currentProfile || !currentPin) return;
+    if (!gitHubToken) {
+      alert("Saved locally! GitHub par sync karne ke liye '⚡ Offline' par tap karke token daalein.");
+      return;
+    }
     const remoteData = (await fetchRemoteData()) || {};
     const plainString = JSON.stringify(vaultDB[currentProfile] || []);
     const encryptedPacket = await encryptData(plainString, currentPin);
     remoteData[currentProfile] = encryptedPacket;
-    await pushRemoteData(remoteData);
+    const ok = await pushRemoteData(remoteData);
+    if (ok) alert("Encrypted & Synced to GitHub data.json successfully!");
   }
 
   async function forceSync() {
+    renderVaultList();
     if (!gitHubToken) {
       updateSyncBadge(false);
       return;
@@ -799,12 +811,16 @@
       const decryptedStr = await decryptData(remoteData[currentProfile], currentPin);
       if (decryptedStr) {
         vaultDB[currentProfile] = JSON.parse(decryptedStr);
+        localStorage.setItem('yantra_local_vault', JSON.stringify(vaultDB));
         renderVaultList();
         updateSyncBadge(true);
       } else {
-        alert("Incorrect PIN for this profile on cloud!");
+        alert("PIN is incorrect for remote profile data!");
         updateSyncBadge(false);
       }
+    } else if (remoteData && Object.keys(remoteData).length === 0 && vaultDB[currentProfile]) {
+      // First time initialization of data.json on GitHub
+      await pushEncryptedVault();
     } else {
       updateSyncBadge(true);
       renderVaultList();
@@ -845,6 +861,7 @@
   async function deleteYantra(id) {
     if (!confirm("Is yantra ko delete karna hai?")) return;
     vaultDB[currentProfile] = (vaultDB[currentProfile] || []).filter(x => x.id !== id);
+    localStorage.setItem('yantra_local_vault', JSON.stringify(vaultDB));
     renderVaultList();
     await pushEncryptedVault();
   }
@@ -853,18 +870,8 @@
     document.getElementById(id).style.display = 'none';
   }
 
-  // Canvas Engine
-  function fitStage() {
-    const zone = document.getElementById('canvas-zone');
-    const size = Math.min(zone.clientWidth - 8, zone.clientHeight - 8);
-    const stage = document.getElementById('stage');
-    stage.setAttribute('width', size);
-    stage.setAttribute('height', size);
-  }
-  window.addEventListener('resize', fitStage);
-  fitStage();
-
-  function renderGrid() {
+  // Pure Vector Geometry Engine
+  function renderGridInternal() {
     const g = document.getElementById('grid-layer');
     if (!showGrid) {
       g.style.display = 'none';
@@ -887,7 +894,7 @@
     const btn = document.getElementById('btn-grid');
     if (showGrid) btn.classList.add('active-toggle');
     else btn.classList.remove('active-toggle');
-    renderGrid();
+    renderGridInternal();
   }
 
   function recordHistory() {
@@ -964,7 +971,6 @@
     `;
   }
 
-  // Exact 43 Triangles Vector Geometry
   function getSriYantraSVG(c, sw) {
     const R = 270;
     const masterTriangles = [
@@ -1518,7 +1524,7 @@
     img.src = url;
   }
 
-  // Init state
+  // Auto-init
   if (currentProfile) {
     document.getElementById('vault-user-lbl').innerText = `Profile: ${currentProfile}`;
   }
