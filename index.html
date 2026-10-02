@@ -71,7 +71,7 @@
     button:active { background: #2c334d; transform: scale(0.96); }
     button.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
     button.active-toggle { background: var(--gold); color: #000; border-color: var(--gold); font-weight: 600; }
-    button.danger { background: #331212; border-color: #551c1c; color: var(--danger); }
+    button.danger { background: #331212; border-color: #551c1c; color: var(--danger); font-weight: 600; }
     button.sync-btn { background: #064e3b; border-color: #047857; color: #a7f3d0; font-weight: 600; }
 
     .layer-strip {
@@ -333,6 +333,7 @@
       <span class="status-badge" id="sync-status" onclick="openSyncModal()">⚡ Offline</span>
     </div>
     <div class="btn-wrap">
+      <button onclick="clearEverything()" class="danger">Clear</button>
       <button onclick="openSaveModal()" class="sync-btn">Save</button>
       <button class="primary" onclick="exportPNG()">Export</button>
     </div>
@@ -360,7 +361,7 @@
       <button class="tab-item" onclick="setTab('t-adjust')">Adjust</button>
     </div>
 
-    <!-- 1. Universal Padma Tab -->
+    <!-- 1. Padma Tab -->
     <div class="tab-body active" id="t-padma">
       <div class="grid-4">
         <button class="chip" onclick="addCustomFormLotus(8, 'cusped')"><span class="ico">🌸</span>Cusped (8)</button>
@@ -442,7 +443,7 @@
       </div>
     </div>
 
-    <!-- 7. Vault Tab (User Profile & Saved Yantras) -->
+    <!-- 7. Vault Tab -->
     <div class="tab-body" id="t-vault">
       <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
         <span id="vault-user-lbl" style="font-size:11px; font-weight:600; color:var(--gold);">Profile: Guest</span>
@@ -545,9 +546,10 @@
       <div style="font-size:10px; color:var(--gold); margin-bottom:4px;">Target: TechsInMyDNA / YANTRAS-GENERATOR</div>
       <div style="font-size:10px; color:var(--text-muted); margin-bottom:4px;">GitHub Personal Access Token (PAT):</div>
       <input type="password" id="inp-gh-token" placeholder="ghp_xxxxxxxxxxxx">
+      <div style="font-size:9.5px; color:#ef4444; margin-top:2px;">*Token me 'repo' (Full Control) checked hona zaroori hai.</div>
       <div style="display:flex; gap:6px; margin-top:8px;">
         <button style="flex:1;" onclick="closeModal('modal-sync')">Close</button>
-        <button class="primary" style="flex:1;" onclick="saveGitHubToken()">Save & Sync data.json</button>
+        <button class="primary" style="flex:1;" onclick="saveGitHubToken()">Save & Connect</button>
       </div>
     </div>
   </div>
@@ -597,6 +599,16 @@
   let vaultDB = JSON.parse(localStorage.getItem('yantra_local_vault') || "{}");
   let remoteFileSha = null;
 
+  // Clear everything including bindu
+  function clearEverything() {
+    if (confirm("Poora canvas aur bindu clear karna hai?")) {
+      items = [];
+      selectedId = null;
+      recordHistory();
+      render();
+    }
+  }
+
   async function deriveKey(pin, salt) {
     const enc = new TextEncoder();
     const baseKey = await crypto.subtle.importKey('raw', enc.encode(pin), 'PBKDF2', false, ['deriveKey']);
@@ -635,7 +647,7 @@
     }
   }
 
-  // Enhanced Fetch Engine: Handles 404 cleanly without throwing error
+  // Robust Fetch with automatic 404 & Empty repo handling
   async function fetchRemoteData() {
     if (!gitHubToken) return null;
     try {
@@ -646,12 +658,10 @@
         }
       });
       if (res.status === 404) {
-        remoteFileSha = null; // Clean file initialization
+        remoteFileSha = null;
         return {};
       }
-      if (!res.ok) {
-        return null;
-      }
+      if (!res.ok) return null;
       const data = await res.json();
       remoteFileSha = data.sha;
       const content = decodeURIComponent(escape(atob(data.content.replace(/\s/g, ''))));
@@ -661,14 +671,13 @@
     }
   }
 
-  // Safe Push Engine: Auto-checks SHA before committing
+  // Safe Push with Direct Commits
   async function pushRemoteData(jsonData) {
     if (!gitHubToken) {
       alert("Pehle GitHub Token configure karein!");
       return false;
     }
     try {
-      // Step 1: Ensure we have the latest SHA if file exists
       if (!remoteFileSha) {
         try {
           const checkRes = await fetch(`https://api.github.com/repos/${GH_OWNER}/${GH_REPO}/contents/${GH_FILE}`, {
@@ -704,7 +713,7 @@
         updateSyncBadge(true);
         return true;
       } else {
-        alert("GitHub Error: " + (resData.message || "Write permission check karein"));
+        alert("GitHub Write Error: " + (resData.message || "Token Permissions ya Repo Access Check Karein"));
       }
     } catch(e) {
       alert("Network Error: GitHub connection fail ho gaya!");
@@ -807,6 +816,10 @@
 
   async function pushEncryptedVault() {
     if (!currentProfile || !currentPin) return;
+    if (!gitHubToken) {
+      alert("Saved locally! GitHub par sync karne ke liye '⚡ Offline' par tap karke token daalein.");
+      return;
+    }
     const remoteData = (await fetchRemoteData()) || {};
     const plainString = JSON.stringify(vaultDB[currentProfile] || []);
     const encryptedPacket = await encryptData(plainString, currentPin);
@@ -885,6 +898,16 @@
   }
 
   // Pure Canvas Geometry
+  function fitStage() {
+    const zone = document.getElementById('canvas-zone');
+    const size = Math.min(zone.clientWidth - 8, zone.clientHeight - 8);
+    const stage = document.getElementById('stage');
+    stage.setAttribute('width', size);
+    stage.setAttribute('height', size);
+  }
+  window.addEventListener('resize', fitStage);
+  fitStage();
+
   function renderGridInternal() {
     const g = document.getElementById('grid-layer');
     if (!showGrid) {
@@ -1425,15 +1448,6 @@
     selectedId = items.length ? items[items.length - 1].id : null;
     recordHistory();
     render();
-  }
-
-  function clearAll() {
-    if (confirm("Canvas reset karna hai?")) {
-      items = [];
-      selectedId = null;
-      recordHistory();
-      render();
-    }
   }
 
   function setTab(tabId) {
