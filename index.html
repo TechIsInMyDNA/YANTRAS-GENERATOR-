@@ -593,7 +593,7 @@
   let showGrid = false;
 
   let currentProfile = localStorage.getItem('yantra_profile_name') || "";
-  let currentPin = sessionStorage.getItem('yantra_profile_pin') || "";
+  let currentPin = localStorage.getItem('yantra_saved_pin') || "";
   let gitHubToken = localStorage.getItem('yantra_gh_token') || "";
   let vaultDB = JSON.parse(localStorage.getItem('yantra_local_vault') || "{}");
   let remoteFileSha = null;
@@ -607,6 +607,26 @@
     }
   }
 
+  // UTF-8 Safe Base64 Helpers
+  function uint8ToBase64(bytes) {
+    let binary = '';
+    const len = bytes.byteLength;
+    for (let i = 0; i < len; i++) {
+      binary += String.fromCharCode(bytes[i]);
+    }
+    return btoa(binary);
+  }
+
+  function base64ToUint8(base64) {
+    const binary = atob(base64.replace(/\s/g, ''));
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) {
+      bytes[i] = binary.charCodeAt(i);
+    }
+    return bytes;
+  }
+
+  // Military Level AES-GCM (256-bit)
   async function deriveKey(pin, salt) {
     const enc = new TextEncoder();
     const baseKey = await crypto.subtle.importKey('raw', enc.encode(pin), 'PBKDF2', false, ['deriveKey']);
@@ -645,10 +665,11 @@
     }
   }
 
+  // Live GitHub Synchronizer
   async function fetchRemoteData() {
     if (!gitHubToken) return null;
     try {
-      const res = await fetch(`https://api.github.com/repos/${GH_OWNER}/${GH_REPO}/contents/${GH_FILE}`, {
+      const res = await fetch(`https://api.github.com/repos/${GH_OWNER}/${GH_REPO}/contents/${GH_FILE}?t=${Date.now()}`, {
         headers: { 
           'Authorization': `token ${gitHubToken}`, 
           'Accept': 'application/vnd.github.v3+json' 
@@ -661,7 +682,8 @@
       if (!res.ok) return null;
       const data = await res.json();
       remoteFileSha = data.sha;
-      const content = decodeURIComponent(escape(atob(data.content.replace(/\s/g, ''))));
+      const bytes = base64ToUint8(data.content);
+      const content = new TextDecoder().decode(bytes);
       return JSON.parse(content);
     } catch(err) {
       return null;
@@ -669,25 +691,22 @@
   }
 
   async function pushRemoteData(jsonData) {
-    if (!gitHubToken) {
-      alert("Pehle GitHub Token configure karein!");
-      return false;
-    }
+    if (!gitHubToken) return false;
     try {
-      if (!remoteFileSha) {
-        try {
-          const checkRes = await fetch(`https://api.github.com/repos/${GH_OWNER}/${GH_REPO}/contents/${GH_FILE}`, {
-            headers: { 'Authorization': `token ${gitHubToken}`, 'Accept': 'application/vnd.github.v3+json' }
-          });
-          if (checkRes.ok) {
-            const checkData = await checkRes.json();
-            remoteFileSha = checkData.sha;
-          }
-        } catch(e){}
+      // Step 1: Latest SHA fetch
+      const checkRes = await fetch(`https://api.github.com/repos/${GH_OWNER}/${GH_REPO}/contents/${GH_FILE}?t=${Date.now()}`, {
+        headers: { 'Authorization': `token ${gitHubToken}`, 'Accept': 'application/vnd.github.v3+json' }
+      });
+      if (checkRes.ok) {
+        const checkData = await checkRes.json();
+        remoteFileSha = checkData.sha;
       }
 
-      const contentStr = unescape(encodeURIComponent(JSON.stringify(jsonData, null, 2)));
-      const base64Content = btoa(contentStr);
+      // Step 2: Binary Safe Encoding
+      const jsonString = JSON.stringify(jsonData, null, 2);
+      const jsonBytes = new TextEncoder().encode(jsonString);
+      const base64Content = uint8ToBase64(jsonBytes);
+
       const body = {
         message: `Live Sync Yantra Vault [${new Date().toISOString()}]`,
         content: base64Content
@@ -721,9 +740,9 @@
       el.style.color = "var(--success)";
       el.style.borderColor = "var(--success)";
     } else {
-      el.innerText = gitHubToken ? "⚠ Sync Issue" : "⚡ Offline";
-      el.style.color = "var(--text-muted)";
-      el.style.borderColor = "var(--border)";
+      el.innerText = gitHubToken ? "⚠️ Sync Issue" : "⚡ Offline";
+      el.style.color = "var(--danger)";
+      el.style.borderColor = "var(--danger)";
     }
   }
 
@@ -757,7 +776,7 @@
   function openProfileModal() {
     document.getElementById('modal-profile').style.display = 'flex';
     document.getElementById('inp-profile-name').value = currentProfile;
-    document.getElementById('inp-profile-pin').value = '';
+    document.getElementById('inp-profile-pin').value = currentPin;
   }
 
   async function saveUserProfile() {
@@ -770,7 +789,7 @@
     currentProfile = name;
     currentPin = pin;
     localStorage.setItem('yantra_profile_name', name);
-    sessionStorage.setItem('yantra_profile_pin', pin);
+    localStorage.setItem('yantra_saved_pin', pin);
     document.getElementById('vault-user-lbl').innerText = `Profile: ${name}`;
     closeModal('modal-profile');
     await forceSync();
@@ -812,36 +831,28 @@
     const plainString = JSON.stringify(vaultDB[currentProfile] || []);
     const encryptedPacket = await encryptData(plainString, currentPin);
     remoteData[currentProfile] = encryptedPacket;
-    await pushRemoteData(remoteData);
+    const ok = await pushRemoteData(remoteData);
+    if (ok) updateSyncBadge(true);
   }
 
   async function forceSync() {
-    if (!currentPin) {
-      const askPin = prompt(`Profile '${currentProfile}' ka PIN daalein to view/sync vault:`);
-      if (!askPin) {
-        renderVaultList();
-        return;
-      }
-      currentPin = askPin;
-      sessionStorage.setItem('yantra_profile_pin', askPin);
-    }
-
+    renderVaultList();
     if (!gitHubToken) {
       updateSyncBadge(false);
-      renderVaultList();
       return;
     }
 
     const remoteData = await fetchRemoteData();
-    if (remoteData && remoteData[currentProfile] && currentPin) {
-      const decryptedStr = await decryptData(remoteData[currentProfile], currentPin);
-      if (decryptedStr) {
-        vaultDB[currentProfile] = JSON.parse(decryptedStr);
-        localStorage.setItem('yantra_local_vault', JSON.stringify(vaultDB));
-        updateSyncBadge(true);
-      } else {
-        alert("Galat PIN! Remote profile decrypt nahi ho saki.");
-        updateSyncBadge(false);
+    if (remoteData && remoteData[currentProfile]) {
+      if (currentPin) {
+        const decryptedStr = await decryptData(remoteData[currentProfile], currentPin);
+        if (decryptedStr) {
+          vaultDB[currentProfile] = JSON.parse(decryptedStr);
+          localStorage.setItem('yantra_local_vault', JSON.stringify(vaultDB));
+          updateSyncBadge(true);
+        } else {
+          updateSyncBadge(false);
+        }
       }
     } else if (remoteData && Object.keys(remoteData).length === 0 && vaultDB[currentProfile]) {
       await pushEncryptedVault();
@@ -1229,7 +1240,7 @@
         d = `
           <circle cx="0" cy="0" r="150" fill="none" stroke="${c}" stroke-width="${sw}"/>
           <circle cx="0" cy="0" r="170" fill="none" stroke="${c}" stroke-width="${sw * 0.8}"/>
-          <circle cx="0" cy="190" r="190" fill="none" stroke="${c}" stroke-width="${sw}"/>
+          <circle cx="0" cy="0" r="190" fill="none" stroke="${c}" stroke-width="${sw}"/>
         `;
         break;
       case 'square':
@@ -1447,6 +1458,10 @@
     render();
   }
 
+  function clearAll() {
+    clearEverything();
+  }
+
   function setTab(tabId) {
     document.querySelectorAll('.tab-item').forEach(b => b.classList.remove('active'));
     document.querySelectorAll('.tab-body').forEach(v => v.classList.remove('active'));
@@ -1553,7 +1568,7 @@
     document.getElementById('vault-user-lbl').innerText = `Profile: ${currentProfile}`;
   }
   if (gitHubToken) {
-    updateSyncBadge(true);
+    forceSync();
   }
   addShape('bindu');
 </script>
