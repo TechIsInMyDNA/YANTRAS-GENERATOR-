@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-  <title>Universal Sacred Yantra Studio - Live Sync</title>
+  <title>Universal Sacred Yantra Studio - Full Master Edition</title>
   <style>
     :root {
       --bg: #090a0f;
@@ -361,7 +361,7 @@
       <button class="tab-item" onclick="setTab('t-adjust')">Adjust</button>
     </div>
 
-    <!-- 1. Padma Tab -->
+    <!-- 1. Universal Padma Tab -->
     <div class="tab-body active" id="t-padma">
       <div class="grid-4">
         <button class="chip" onclick="addCustomFormLotus(8, 'cusped')"><span class="ico">🌸</span>Cusped (8)</button>
@@ -449,7 +449,7 @@
         <span id="vault-user-lbl" style="font-size:11px; font-weight:600; color:var(--gold);">Profile: Agrawal Shubham</span>
         <div style="display:flex; gap:4px;">
           <button onclick="openProfileModal()">Switch User</button>
-          <button onclick="forceSync(true)" class="sync-btn">Sync Now</button>
+          <button onclick="syncFromCloud(true)" class="sync-btn">Sync Now</button>
         </div>
       </div>
       <div id="vault-list" style="display:flex; flex-direction:column; gap:4px;">
@@ -557,9 +557,9 @@
 <!-- Modal 2: Profile & PIN Setup -->
 <div class="modal-overlay" id="modal-profile">
   <div class="modal-card">
-    <h3>User Profile & Secure PIN</h3>
+    <h3>User Profile & Cloud PIN</h3>
     <input type="text" id="inp-profile-name" placeholder="Your Profile Name...">
-    <input type="password" id="inp-profile-pin" placeholder="Enter Secure 4-6 Digit PIN..." maxlength="8">
+    <input type="password" id="inp-profile-pin" placeholder="Enter Secure PIN (4-8 digits)..." maxlength="8">
     <div style="display:flex; gap:6px; margin-top:6px;">
       <button style="flex:1;" onclick="closeModal('modal-profile')">Cancel</button>
       <button class="primary" style="flex:1;" onclick="saveUserProfile()">Login / Unlock</button>
@@ -580,9 +580,9 @@
 </div>
 
 <script>
-  // ABSOLUTE ROCK-SOLID REPOSITORY TARGET SPECIFICATION
+  // EXACT TARGET CREDENTIALS (NO MISMATCH)[cite: 10]
   const GH_OWNER = "TechsInMyDNA";
-  const GH_REPO = "YANTRAS-GENERATOR-";
+  const GH_REPO = "YANTRAS-GENERATOR-"; // Matches your repo URL with hyphen '-'[cite: 10]
   const GH_FILE = "data.json";
 
   const MAX = 1000;
@@ -596,7 +596,7 @@
   let currentProfile = localStorage.getItem('yantra_profile_name') || "Agrawal Shubham";
   let currentPin = localStorage.getItem('yantra_saved_pin') || "";
   let gitHubToken = localStorage.getItem('yantra_gh_token') || "";
-  let vaultDB = JSON.parse(localStorage.getItem('yantra_local_vault') || "{}");
+  let userVaultItems = [];
   let remoteFileSha = null;
 
   function clearEverything() {
@@ -608,7 +608,7 @@
     }
   }
 
-  // Pure UTF-8 to Base64 & Inverse Streamers
+  // Base64 Binary Streamers
   function uint8ToBase64(bytes) {
     let binary = '';
     const len = bytes.byteLength;
@@ -627,7 +627,15 @@
     return bytes;
   }
 
-  // Military Level AES-GCM (256-bit)
+  // SHA-256 Hasher for PIN Cloud Verification
+  async function hashPin(pin) {
+    const msgUint8 = new TextEncoder().encode(pin + "_yantra_secure_salt");
+    const hashBuffer = await crypto.subtle.digest('SHA-256', msgUint8);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+  }
+
+  // AES-GCM (256-bit) Engine
   async function deriveKey(pin, salt) {
     const enc = new TextEncoder();
     const baseKey = await crypto.subtle.importKey('raw', enc.encode(pin), 'PBKDF2', false, ['deriveKey']);
@@ -666,8 +674,8 @@
     }
   }
 
-  // Anti-Cache GitHub Fetcher
-  async function fetchRemoteData() {
+  // GITHUB API REAL ENGINE
+  async function fetchCloudData() {
     if (!gitHubToken) return null;
     try {
       const url = `https://api.github.com/repos/${GH_OWNER}/${GH_REPO}/contents/${GH_FILE}?nocache=${Date.now()}`;
@@ -681,7 +689,7 @@
       });
       if (res.status === 404) {
         remoteFileSha = null;
-        return {};
+        return { profiles: {} };
       }
       if (!res.ok) {
         updateSyncBadge(false);
@@ -691,42 +699,39 @@
       remoteFileSha = data.sha;
       const bytes = base64ToUint8(data.content);
       const content = new TextDecoder().decode(bytes);
-      return JSON.parse(content);
+      const parsed = JSON.parse(content);
+      return parsed.profiles ? parsed : { profiles: parsed };
     } catch(err) {
       updateSyncBadge(false);
       return null;
     }
   }
 
-  async function pushRemoteData(jsonData, showSuccessNotice = false) {
+  async function pushCloudData(cloudJson) {
     if (!gitHubToken) {
-      alert("Pehle GitHub Token daalkar connect karein!");
+      alert("GitHub token set nahi hai! Top bar par Offline badge par tap karein.");
       return false;
     }
     try {
-      // 1. Fetch fresh remote SHA immediately before writing
-      try {
-        const checkUrl = `https://api.github.com/repos/${GH_OWNER}/${GH_REPO}/contents/${GH_FILE}?nocache=${Date.now()}`;
-        const checkRes = await fetch(checkUrl, {
-          headers: { 
-            'Authorization': `token ${gitHubToken}`, 
-            'Accept': 'application/vnd.github.v3+json',
-            'Cache-Control': 'no-cache'
-          }
-        });
-        if (checkRes.ok) {
-          const checkData = await checkRes.json();
-          remoteFileSha = checkData.sha;
+      const checkUrl = `https://api.github.com/repos/${GH_OWNER}/${GH_REPO}/contents/${GH_FILE}?nocache=${Date.now()}`;
+      const checkRes = await fetch(checkUrl, {
+        headers: { 
+          'Authorization': `token ${gitHubToken}`, 
+          'Accept': 'application/vnd.github.v3+json',
+          'Cache-Control': 'no-cache'
         }
-      } catch(e) {}
+      });
+      if (checkRes.ok) {
+        const checkData = await checkRes.json();
+        remoteFileSha = checkData.sha;
+      }
 
-      // 2. Binary UTF-8 Safe Encoding
-      const jsonString = JSON.stringify(jsonData, null, 2);
+      const jsonString = JSON.stringify(cloudJson, null, 2);
       const jsonBytes = new TextEncoder().encode(jsonString);
       const base64Content = uint8ToBase64(jsonBytes);
 
       const body = {
-        message: `Live Sync Yantra Vault [${new Date().toISOString()}]`,
+        message: `Live Sync Profile & Yantras [${new Date().toISOString()}]`,
         content: base64Content
       };
       if (remoteFileSha) body.sha = remoteFileSha;
@@ -744,18 +749,165 @@
       if (res.ok) {
         remoteFileSha = resData.content ? resData.content.sha : null;
         updateSyncBadge(true);
-        if (showSuccessNotice) {
-          alert("✅ Cloud Live Sync Successful!\n(data.json updated on GitHub)");
-        }
         return true;
       } else {
-        alert("GitHub Sync Error: " + (resData.message || "Failed"));
+        alert("GitHub Push Failed: " + (resData.message || "Error"));
+        updateSyncBadge(false);
+        return false;
       }
     } catch(e) {
-      alert("Network Error: GitHub connect nahi ho paya!");
+      alert("Network Error: Cloud connect nahi ho paya.");
+      updateSyncBadge(false);
+      return false;
     }
-    updateSyncBadge(false);
-    return false;
+  }
+
+  // TRUE CENTRALIZED SYNC ENGINE
+  async function syncFromCloud(showNotice = false) {
+    if (!gitHubToken) {
+      updateSyncBadge(false);
+      renderVaultList();
+      return;
+    }
+    const cloudDB = await fetchCloudData();
+    if (!cloudDB) {
+      if (showNotice) alert("Cloud connection failed! Token check karein.");
+      return;
+    }
+
+    const profiles = cloudDB.profiles || {};
+    const profData = profiles[currentProfile];
+
+    if (!profData) {
+      userVaultItems = [];
+      renderVaultList();
+      updateSyncBadge(true);
+      if (showNotice) alert(`Cloud par '${currentProfile}' profile nahi mili. Naya design banakar 'Save' karein taaki profile create ho sake.`);
+      return;
+    }
+
+    if (!currentPin) {
+      currentPin = prompt(`Profile '${currentProfile}' cloud par mili! Apna PIN enter karein:`) || "";
+      if (currentPin) localStorage.setItem('yantra_saved_pin', currentPin);
+    }
+
+    if (!currentPin) {
+      renderVaultList();
+      return;
+    }
+
+    const inputPinHash = await hashPin(currentPin);
+    if (profData.pinHash && profData.pinHash !== inputPinHash) {
+      alert("❌ Galat PIN! Cloud profile unlock nahi ho saki.");
+      updateSyncBadge(false);
+      return;
+    }
+
+    const decryptedStr = await decryptData(profData.vault, currentPin);
+    if (decryptedStr) {
+      userVaultItems = JSON.parse(decryptedStr);
+      localStorage.setItem('yantra_cached_items', JSON.stringify(userVaultItems));
+      updateSyncBadge(true);
+      renderVaultList();
+      if (showNotice) alert(`✅ Live Sync Successful! '${currentProfile}' ke ${userVaultItems.length} yantras cloud se load ho gaye.`);
+    } else {
+      alert("❌ Decryption error! PIN galat hai.");
+      updateSyncBadge(false);
+    }
+  }
+
+  async function confirmSaveYantra() {
+    const title = document.getElementById('inp-yantra-name').value.trim() || `Yantra_${Date.now()}`;
+    if (!items.length) {
+      alert("Canvas khali hai!");
+      return;
+    }
+    if (!currentProfile || !currentPin) {
+      openProfileModal();
+      return;
+    }
+
+    const newRecord = {
+      id: "y_" + Date.now(),
+      name: title,
+      date: new Date().toLocaleDateString('hi-IN'),
+      items: JSON.parse(JSON.stringify(items))
+    };
+
+    userVaultItems.push(newRecord);
+    closeModal('modal-save');
+    renderVaultList();
+    setTab('t-vault');
+
+    const cloudDB = (await fetchCloudData()) || { profiles: {} };
+    if (!cloudDB.profiles) cloudDB.profiles = {};
+
+    const pinH = await hashPin(currentPin);
+    const encryptedPacket = await encryptData(JSON.stringify(userVaultItems), currentPin);
+
+    cloudDB.profiles[currentProfile] = {
+      profileName: currentProfile,
+      pinHash: pinH,
+      updatedAt: new Date().toISOString(),
+      vault: encryptedPacket
+    };
+
+    const ok = await pushCloudData(cloudDB);
+    if (ok) {
+      localStorage.setItem('yantra_cached_items', JSON.stringify(userVaultItems));
+      alert(`✅ '${title}' saved & profile synced to GitHub data.json!`);
+    }
+  }
+
+  async function deleteYantra(id) {
+    if (!confirm("Is yantra ko delete karna hai?")) return;
+    userVaultItems = userVaultItems.filter(x => x.id !== id);
+    renderVaultList();
+
+    const cloudDB = (await fetchCloudData()) || { profiles: {} };
+    if (!cloudDB.profiles) cloudDB.profiles = {};
+
+    const pinH = await hashPin(currentPin);
+    const encryptedPacket = await encryptData(JSON.stringify(userVaultItems), currentPin);
+
+    cloudDB.profiles[currentProfile] = {
+      profileName: currentProfile,
+      pinHash: pinH,
+      updatedAt: new Date().toISOString(),
+      vault: encryptedPacket
+    };
+
+    await pushCloudData(cloudDB);
+  }
+
+  function renderVaultList() {
+    const box = document.getElementById('vault-list');
+    if (!userVaultItems.length) {
+      box.innerHTML = `<div style="font-size:10px; color:var(--text-muted); text-align:center; padding:10px;">Is profile me koi saved yantra nahi hai</div>`;
+      return;
+    }
+    box.innerHTML = userVaultItems.map(r => `
+      <div class="vault-card">
+        <div>
+          <div class="info">${r.name}</div>
+          <div class="sub">${r.date} • ${r.items.length} layers</div>
+        </div>
+        <div style="display:flex; gap:4px;">
+          <button onclick="loadYantra('${r.id}')">Load</button>
+          <button class="danger" onclick="deleteYantra('${r.id}')">Del</button>
+        </div>
+      </div>
+    `).join('');
+  }
+
+  function loadYantra(id) {
+    const record = userVaultItems.find(x => x.id === id);
+    if (!record) return;
+    items = JSON.parse(JSON.stringify(record.items));
+    selectedId = items.length ? items[items.length - 1].id : null;
+    recordHistory();
+    render();
+    setTab('t-adjust');
   }
 
   function updateSyncBadge(online) {
@@ -796,7 +948,7 @@
     gitHubToken = tok;
     localStorage.setItem('yantra_gh_token', tok);
     closeModal('modal-sync');
-    await forceSync(true);
+    await syncFromCloud(true);
   }
 
   function openProfileModal() {
@@ -818,7 +970,7 @@
     localStorage.setItem('yantra_saved_pin', pin);
     document.getElementById('vault-user-lbl').innerText = `Profile: ${name}`;
     closeModal('modal-profile');
-    await forceSync(true);
+    await syncFromCloud(true);
   }
 
   function openSaveModal() {
@@ -828,110 +980,6 @@
     }
     document.getElementById('modal-save').style.display = 'flex';
     document.getElementById('inp-yantra-name').value = '';
-  }
-
-  async function confirmSaveYantra() {
-    const title = document.getElementById('inp-yantra-name').value.trim() || `Yantra_${Date.now()}`;
-    if (!items.length) {
-      alert("Canvas par koi element nahi hai!");
-      return;
-    }
-    const newRecord = {
-      id: "y_" + Date.now(),
-      name: title,
-      date: new Date().toLocaleDateString('hi-IN'),
-      items: JSON.parse(JSON.stringify(items))
-    };
-    if (!vaultDB[currentProfile]) vaultDB[currentProfile] = [];
-    vaultDB[currentProfile].push(newRecord);
-    localStorage.setItem('yantra_local_vault', JSON.stringify(vaultDB));
-    closeModal('modal-save');
-    renderVaultList();
-    setTab('t-vault');
-    await pushEncryptedVault(true);
-  }
-
-  async function pushEncryptedVault(showNotice = false) {
-    if (!currentProfile || !currentPin) return;
-    const remoteData = (await fetchRemoteData()) || {};
-    const plainString = JSON.stringify(vaultDB[currentProfile] || []);
-    const encryptedPacket = await encryptData(plainString, currentPin);
-    remoteData[currentProfile] = encryptedPacket;
-    const ok = await pushRemoteData(remoteData, showNotice);
-    if (ok) updateSyncBadge(true);
-  }
-
-  async function forceSync(showUserNotice = false) {
-    renderVaultList();
-    if (!gitHubToken) {
-      updateSyncBadge(false);
-      return;
-    }
-
-    const remoteData = await fetchRemoteData();
-    if (remoteData && remoteData[currentProfile]) {
-      if (!currentPin) {
-        currentPin = prompt(`PIN daalein to unlock profile '${currentProfile}':`) || "";
-        if (currentPin) localStorage.setItem('yantra_saved_pin', currentPin);
-      }
-      if (currentPin) {
-        const decryptedStr = await decryptData(remoteData[currentProfile], currentPin);
-        if (decryptedStr) {
-          vaultDB[currentProfile] = JSON.parse(decryptedStr);
-          localStorage.setItem('yantra_local_vault', JSON.stringify(vaultDB));
-          updateSyncBadge(true);
-          if (showUserNotice) alert("✅ Cloud data successfully synced & decrypted!");
-        } else {
-          alert("Galat PIN! Cloud data decrypt nahi ho paya.");
-          updateSyncBadge(false);
-        }
-      }
-    } else if (remoteData && Object.keys(remoteData).length === 0 && vaultDB[currentProfile]) {
-      await pushEncryptedVault(showUserNotice);
-    } else {
-      updateSyncBadge(true);
-      if (showUserNotice) alert("✅ Live Synced! (Sabhi records updated hain)");
-    }
-    renderVaultList();
-  }
-
-  function renderVaultList() {
-    const box = document.getElementById('vault-list');
-    const records = vaultDB[currentProfile] || [];
-    if (!records.length) {
-      box.innerHTML = `<div style="font-size:10px; color:var(--text-muted); text-align:center; padding:10px;">Is profile me koi saved yantra nahi hai</div>`;
-      return;
-    }
-    box.innerHTML = records.map(r => `
-      <div class="vault-card">
-        <div>
-          <div class="info">${r.name}</div>
-          <div class="sub">${r.date} • ${r.items.length} layers</div>
-        </div>
-        <div style="display:flex; gap:4px;">
-          <button onclick="loadYantra('${r.id}')">Load</button>
-          <button class="danger" onclick="deleteYantra('${r.id}')">Del</button>
-        </div>
-      </div>
-    `).join('');
-  }
-
-  function loadYantra(id) {
-    const record = (vaultDB[currentProfile] || []).find(x => x.id === id);
-    if (!record) return;
-    items = JSON.parse(JSON.stringify(record.items));
-    selectedId = items.length ? items[items.length - 1].id : null;
-    recordHistory();
-    render();
-    setTab('t-adjust');
-  }
-
-  async function deleteYantra(id) {
-    if (!confirm("Is yantra ko delete karna hai?")) return;
-    vaultDB[currentProfile] = (vaultDB[currentProfile] || []).filter(x => x.id !== id);
-    localStorage.setItem('yantra_local_vault', JSON.stringify(vaultDB));
-    renderVaultList();
-    await pushEncryptedVault(false);
   }
 
   function closeModal(id) {
@@ -1597,11 +1645,12 @@
     img.src = url;
   }
 
+  // Auto Init Sequence
   if (currentProfile) {
     document.getElementById('vault-user-lbl').innerText = `Profile: ${currentProfile}`;
   }
   if (gitHubToken) {
-    forceSync(false);
+    syncFromCloud(false);
   }
   addShape('bindu');
 </script>
