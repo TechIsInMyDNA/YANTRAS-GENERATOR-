@@ -543,7 +543,7 @@
       </div>
     </div>
     <div id="step-token" style="display:none;">
-      <div style="font-size:10px; color:var(--gold); margin-bottom:4px;">Target: TechsInMyDNA / YANTRAS-GENERATOR-</div>
+      <div id="lbl-detected-target" style="font-size:10px; color:var(--gold); margin-bottom:4px;">Target: Auto-Detecting...</div>
       <div style="font-size:10px; color:var(--text-muted); margin-bottom:4px;">GitHub Personal Access Token (PAT):</div>
       <input type="password" id="inp-gh-token" placeholder="ghp_xxxxxxxxxxxx">
       <div style="display:flex; gap:6px; margin-top:8px;">
@@ -580,9 +580,24 @@
 </div>
 
 <script>
-  // EXACT MATCH WITH YOUR GITHUB REPO NAME FROM URL:
-  const GH_OWNER = "TechsInMyDNA";
-  const GH_REPO = "YANTRAS-GENERATOR-"; // FIXED: Attached exact hyphen '-' from URL
+  // DYNAMIC TARGET IDENTIFIER (Prevents any Casing or Hyphen Mismatches)
+  function getRepoTarget() {
+    let owner = "TechsInMyDNA";
+    let repo = "YANTRAS-GENERATOR-";
+    try {
+      const host = window.location.hostname;
+      if (host.includes("github.io")) {
+        owner = host.split(".")[0];
+        const pathSegments = window.location.pathname.split("/").filter(Boolean);
+        if (pathSegments.length > 0) {
+          repo = pathSegments[0];
+        }
+      }
+    } catch(e) {}
+    return { owner, repo };
+  }
+
+  const { owner: GH_OWNER, repo: GH_REPO } = getRepoTarget();
   const GH_FILE = "data.json";
 
   const MAX = 1000;
@@ -733,7 +748,7 @@
         updateSyncBadge(true);
         return true;
       } else {
-        alert("GitHub Sync Error: " + (resData.message || "Request failed"));
+        alert("GitHub Sync Error: " + (resData.message || "Failed"));
       }
     } catch(e) {
       alert("Network Error: GitHub connect nahi ho paya!");
@@ -760,6 +775,7 @@
     document.getElementById('step-passphrase').style.display = 'block';
     document.getElementById('step-token').style.display = 'none';
     document.getElementById('inp-sync-pass').value = '';
+    document.getElementById('lbl-detected-target').innerText = `Target: ${GH_OWNER} / ${GH_REPO}`;
   }
 
   function verifyPassphrase() {
@@ -1465,6 +1481,10 @@
     selectedId = items.length ? items[items.length - 1].id : null;
     recordHistory();
     render();
+  }
+
+  function clearAll() {
+    clearEverything();
   }
 
   function setTab(tabId) {
