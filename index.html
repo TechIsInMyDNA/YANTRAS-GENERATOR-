@@ -580,7 +580,6 @@
 </div>
 
 <script>
-  // EXACT TARGET CREDENTIALS (Matches repo URL ending with hyphen)
   const GH_OWNER = "TechsInMyDNA";
   const GH_REPO = "YANTRAS-GENERATOR-";
   const GH_FILE = "data.json";
@@ -608,7 +607,6 @@
     }
   }
 
-  // Base64 Binary Streamers
   function uint8ToBase64(bytes) {
     let binary = '';
     const len = bytes.byteLength;
@@ -634,7 +632,6 @@
     return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
   }
 
-  // AES-GCM (256-bit) Engine
   async function deriveKey(pin, salt) {
     const enc = new TextEncoder();
     const baseKey = await crypto.subtle.importKey('raw', enc.encode(pin), 'PBKDF2', false, ['deriveKey']);
@@ -673,27 +670,25 @@
     }
   }
 
-  // Dual Token Formatter (Supports 'ghp_' and fine-grained formats cleanly)
-  function getAuthHeader(tok) {
-    return tok.startsWith('ghp_') ? `token ${tok}` : `Bearer ${tok}`;
+  function getCleanHeaders() {
+    return {
+      'Authorization': `token ${gitHubToken.trim()}`,
+      'Accept': 'application/vnd.github.v3+json'
+    };
   }
 
-  // FAIL-SAFE CLOUD FETCHER (Never throws or returns null on empty repo)
+  // FAIL-SAFE FETCH: Zero custom caching headers to prevent CORS preflight drops
   async function fetchCloudData() {
     if (!gitHubToken) return { profiles: {} };
     try {
-      const url = `https://api.github.com/repos/${GH_OWNER}/${GH_REPO}/contents/${GH_FILE}?nocache=${Date.now()}`;
+      const url = `https://api.github.com/repos/${GH_OWNER}/${GH_REPO}/contents/${GH_FILE}?_t=${Date.now()}`;
       const res = await fetch(url, {
-        headers: { 
-          'Authorization': getAuthHeader(gitHubToken), 
-          'Accept': 'application/vnd.github.v3+json',
-          'Cache-Control': 'no-cache, no-store, must-revalidate',
-          'Pragma': 'no-cache'
-        }
+        method: 'GET',
+        headers: getCleanHeaders()
       });
       if (res.status === 404) {
         remoteFileSha = null;
-        return { profiles: {} }; // Brand new repository state
+        return { profiles: {} };
       }
       if (!res.ok) {
         updateSyncBadge(false);
@@ -717,19 +712,20 @@
       return false;
     }
     try {
-      // Refresh latest SHA before committing
-      const checkUrl = `https://api.github.com/repos/${GH_OWNER}/${GH_REPO}/contents/${GH_FILE}?nocache=${Date.now()}`;
-      const checkRes = await fetch(checkUrl, {
-        headers: { 
-          'Authorization': getAuthHeader(gitHubToken), 
-          'Accept': 'application/vnd.github.v3+json',
-          'Cache-Control': 'no-cache'
+      // Refresh SHA softly
+      try {
+        const checkUrl = `https://api.github.com/repos/${GH_OWNER}/${GH_REPO}/contents/${GH_FILE}?_t=${Date.now()}`;
+        const checkRes = await fetch(checkUrl, {
+          method: 'GET',
+          headers: getCleanHeaders()
+        });
+        if (checkRes.ok) {
+          const checkData = await checkRes.json();
+          remoteFileSha = checkData.sha;
+        } else if (checkRes.status === 404) {
+          remoteFileSha = null;
         }
-      });
-      if (checkRes.ok) {
-        const checkData = await checkRes.json();
-        remoteFileSha = checkData.sha;
-      }
+      } catch(e) {}
 
       const jsonString = JSON.stringify(cloudJson, null, 2);
       const jsonBytes = new TextEncoder().encode(jsonString);
@@ -743,11 +739,7 @@
 
       const res = await fetch(`https://api.github.com/repos/${GH_OWNER}/${GH_REPO}/contents/${GH_FILE}`, {
         method: 'PUT',
-        headers: {
-          'Authorization': getAuthHeader(gitHubToken),
-          'Accept': 'application/vnd.github.v3+json',
-          'Content-Type': 'application/json'
-        },
+        headers: getCleanHeaders(),
         body: JSON.stringify(body)
       });
       const resData = await res.json();
@@ -761,18 +753,17 @@
         return false;
       }
     } catch(e) {
-      alert("Network Error: Cloud connect nahi ho paya.");
+      alert("Network Error: GitHub connection fail ho gaya. Token scopes verify karein.");
       updateSyncBadge(false);
       return false;
     }
   }
 
-  // SYNC FROM CLOUD
   async function syncFromCloud(showNotice = false) {
     if (!gitHubToken) {
       updateSyncBadge(false);
       renderVaultList();
-      if (showNotice) alert("GitHub Token add karein pehle!");
+      if (showNotice) alert("GitHub Token configure karein!");
       return;
     }
 
@@ -1641,7 +1632,7 @@
     img.src = url;
   }
 
-  // Auto Init (Quiet, no unwanted alert on load)
+  // Auto Init (Quiet, safe load)
   if (currentProfile) {
     document.getElementById('vault-user-lbl').innerText = `Profile: ${currentProfile}`;
   }
