@@ -361,7 +361,7 @@
       <button class="tab-item" onclick="setTab('t-adjust')">Adjust</button>
     </div>
 
-    <!-- 1. Universal Padma Tab -->
+    <!-- 1. Padma Tab -->
     <div class="tab-body active" id="t-padma">
       <div class="grid-4">
         <button class="chip" onclick="addCustomFormLotus(8, 'cusped')"><span class="ico">🌸</span>Cusped (8)</button>
@@ -580,9 +580,8 @@
 </div>
 
 <script>
-  // EXACT TARGET CREDENTIALS (NO MISMATCH)[cite: 10]
   const GH_OWNER = "TechsInMyDNA";
-  const GH_REPO = "YANTRAS-GENERATOR-"; // Matches your repo URL with hyphen '-'[cite: 10]
+  const GH_REPO = "YANTRAS-GENERATOR-";
   const GH_FILE = "data.json";
 
   const MAX = 1000;
@@ -608,7 +607,6 @@
     }
   }
 
-  // Base64 Binary Streamers
   function uint8ToBase64(bytes) {
     let binary = '';
     const len = bytes.byteLength;
@@ -627,7 +625,6 @@
     return bytes;
   }
 
-  // SHA-256 Hasher for PIN Cloud Verification
   async function hashPin(pin) {
     const msgUint8 = new TextEncoder().encode(pin + "_yantra_secure_salt");
     const hashBuffer = await crypto.subtle.digest('SHA-256', msgUint8);
@@ -635,7 +632,6 @@
     return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
   }
 
-  // AES-GCM (256-bit) Engine
   async function deriveKey(pin, salt) {
     const enc = new TextEncoder();
     const baseKey = await crypto.subtle.importKey('raw', enc.encode(pin), 'PBKDF2', false, ['deriveKey']);
@@ -674,14 +670,14 @@
     }
   }
 
-  // GITHUB API REAL ENGINE
+  // ROBUST CLOUD FETCHER (Handles 404 cleanly without returning null)
   async function fetchCloudData() {
     if (!gitHubToken) return null;
     try {
       const url = `https://api.github.com/repos/${GH_OWNER}/${GH_REPO}/contents/${GH_FILE}?nocache=${Date.now()}`;
       const res = await fetch(url, {
         headers: { 
-          'Authorization': `token ${gitHubToken}`, 
+          'Authorization': `Bearer ${gitHubToken}`, 
           'Accept': 'application/vnd.github.v3+json',
           'Cache-Control': 'no-cache, no-store, must-revalidate',
           'Pragma': 'no-cache'
@@ -689,7 +685,7 @@
       });
       if (res.status === 404) {
         remoteFileSha = null;
-        return { profiles: {} };
+        return { profiles: {} }; // Perfectly valid state for empty repo
       }
       if (!res.ok) {
         updateSyncBadge(false);
@@ -716,7 +712,7 @@
       const checkUrl = `https://api.github.com/repos/${GH_OWNER}/${GH_REPO}/contents/${GH_FILE}?nocache=${Date.now()}`;
       const checkRes = await fetch(checkUrl, {
         headers: { 
-          'Authorization': `token ${gitHubToken}`, 
+          'Authorization': `Bearer ${gitHubToken}`, 
           'Accept': 'application/vnd.github.v3+json',
           'Cache-Control': 'no-cache'
         }
@@ -739,7 +735,7 @@
       const res = await fetch(`https://api.github.com/repos/${GH_OWNER}/${GH_REPO}/contents/${GH_FILE}`, {
         method: 'PUT',
         headers: {
-          'Authorization': `token ${gitHubToken}`,
+          'Authorization': `Bearer ${gitHubToken}`,
           'Accept': 'application/vnd.github.v3+json',
           'Content-Type': 'application/json'
         },
@@ -762,7 +758,6 @@
     }
   }
 
-  // TRUE CENTRALIZED SYNC ENGINE
   async function syncFromCloud(showNotice = false) {
     if (!gitHubToken) {
       updateSyncBadge(false);
@@ -770,7 +765,7 @@
       return;
     }
     const cloudDB = await fetchCloudData();
-    if (!cloudDB) {
+    if (cloudDB === null) {
       if (showNotice) alert("Cloud connection failed! Token check karein.");
       return;
     }
@@ -782,7 +777,7 @@
       userVaultItems = [];
       renderVaultList();
       updateSyncBadge(true);
-      if (showNotice) alert(`Cloud par '${currentProfile}' profile nahi mili. Naya design banakar 'Save' karein taaki profile create ho sake.`);
+      if (showNotice) alert(`Cloud par '${currentProfile}' profile abhi nahi bani hai. Koi yantra banakar 'Save' karein.`);
       return;
     }
 
@@ -986,7 +981,6 @@
     document.getElementById(id).style.display = 'none';
   }
 
-  // Pure Vector Geometry Engine
   function fitStage() {
     const zone = document.getElementById('canvas-zone');
     const size = Math.min(zone.clientWidth - 8, zone.clientHeight - 8);
@@ -1539,10 +1533,6 @@
     render();
   }
 
-  function clearAll() {
-    clearEverything();
-  }
-
   function setTab(tabId) {
     document.querySelectorAll('.tab-item').forEach(b => b.classList.remove('active'));
     document.querySelectorAll('.tab-body').forEach(v => v.classList.remove('active'));
@@ -1645,7 +1635,6 @@
     img.src = url;
   }
 
-  // Auto Init Sequence
   if (currentProfile) {
     document.getElementById('vault-user-lbl').innerText = `Profile: ${currentProfile}`;
   }
