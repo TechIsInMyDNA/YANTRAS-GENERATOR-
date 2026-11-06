@@ -582,7 +582,8 @@
 <script>
   const GH_OWNER = "TechIsInMyDNA";
   const GH_REPO = "YANTRAS-GENERATOR-";
-  const GH_BRANCH = "main";
+  const GH_MAIN_BRANCH = "main";
+  const GH_DATA_BRANCH = "data-storage"; // Dedicated branch to prevent GitHub Pages builds
   const GH_FILE = "data.json";
 
   const MAX = 1000;
@@ -626,14 +627,12 @@
     return bytes;
   }
 
-  // Hash profile name to a completely anonymous room key
   async function hashProfileRoom(name) {
     const msgUint8 = new TextEncoder().encode(name.trim().toLowerCase() + "_multi_user_room_key");
     const hashBuffer = await crypto.subtle.digest('SHA-256', msgUint8);
     return Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, '0')).join('');
   }
 
-  // AES-256-GCM Military Encryption Engine
   async function deriveKey(pin, salt) {
     const enc = new TextEncoder();
     const baseKey = await crypto.subtle.importKey('raw', enc.encode(pin), 'PBKDF2', false, ['deriveKey']);
@@ -682,11 +681,48 @@
     };
   }
 
-  // Pull multi-user database
+  // Ensure dedicated data-storage branch exists; if not, create it from main
+  async function ensureDataBranchExists() {
+    if (!gitHubToken) return false;
+    try {
+      const checkRes = await fetch(`https://api.github.com/repos/${GH_OWNER}/${GH_REPO}/branches/${GH_DATA_BRANCH}`, {
+        method: 'GET',
+        headers: getCleanHeaders()
+      });
+      if (checkRes.ok) return true;
+
+      // 404 means data branch doesn't exist; get main branch SHA
+      const mainRes = await fetch(`https://api.github.com/repos/${GH_OWNER}/${GH_REPO}/git/refs/heads/${GH_MAIN_BRANCH}`, {
+        method: 'GET',
+        headers: getCleanHeaders()
+      });
+      if (!mainRes.ok) return false;
+      const mainData = await mainRes.json();
+      const mainSha = mainData.object.sha;
+
+      // Create data-storage ref from main SHA
+      const createRes = await fetch(`https://api.github.com/repos/${GH_OWNER}/${GH_REPO}/git/refs`, {
+        method: 'POST',
+        headers: {
+          ...getCleanHeaders(),
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          ref: `refs/heads/${GH_DATA_BRANCH}`,
+          sha: mainSha
+        })
+      });
+      return createRes.ok;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  // Pull multi-user database from data-storage branch
   async function fetchCloudDataWithSha() {
     if (!gitHubToken) return { data: { vaults: {} }, sha: null };
     try {
-      const url = `https://api.github.com/repos/${GH_OWNER}/${GH_REPO}/contents/${GH_FILE}?ref=${GH_BRANCH}&_t=${Date.now()}`;
+      const url = `https://api.github.com/repos/${GH_OWNER}/${GH_REPO}/contents/${GH_FILE}?ref=${GH_DATA_BRANCH}&_t=${Date.now()}`;
       const res = await fetch(url, {
         method: 'GET',
         headers: getCleanHeaders()
@@ -713,35 +749,37 @@
     }
   }
 
-  // Multi-tenant save engine (Merges current user's slot into the pool)
+  // Save to data-storage branch directly to avoid Pages rebuild
   async function saveUserSlotToCloud(userPayload, retryCount = 0) {
     if (!gitHubToken) {
       alert("GitHub token set nahi hai! Top bar par Offline badge par tap karein.");
       return false;
     }
     try {
-      // 1. Fetch latest state of ALL users
+      // 1. Ensure data branch exists
+      await ensureDataBranchExists();
+
+      // 2. Fetch latest state of ALL users from data-storage branch
       const { data: remoteData, sha } = await fetchCloudDataWithSha();
       if (!remoteData.vaults) remoteData.vaults = {};
 
-      // 2. Encrypt ONLY this user's data
+      // 3. Encrypt ONLY this user's data
       const userRoomKey = await hashProfileRoom(currentProfile);
       const encryptedSlot = await encryptUserSlot(userPayload, currentPin);
 
-      // 3. Merge: Update only current user's slot, keeping other 9+ users untouched
+      // 4. Merge slot
       remoteData.vaults[userRoomKey] = {
         updatedAt: new Date().toISOString(),
         payload: encryptedSlot
       };
 
-      // 4. Put back cleanly
       const jsonString = JSON.stringify(remoteData, null, 2);
       const base64Content = uint8ToBase64(new TextEncoder().encode(jsonString));
 
       const body = {
         message: `Sync Vault for user slot [${new Date().toISOString()}]`,
         content: base64Content,
-        branch: GH_BRANCH
+        branch: GH_DATA_BRANCH
       };
       if (sha) body.sha = sha;
 
@@ -759,7 +797,6 @@
         updateSyncBadge(true);
         return true;
       } else if (res.status === 409 && retryCount < 3) {
-        // Concurrency retry: wait slightly and re-merge
         await new Promise(r => setTimeout(r, 600));
         return await saveUserSlotToCloud(userPayload, retryCount + 1);
       } else {
@@ -774,7 +811,6 @@
     }
   }
 
-  // Independent user sync & decryption
   async function syncFromCloud(showNotice = false) {
     if (isSyncing) return;
     if (!currentProfile) {
@@ -793,6 +829,7 @@
       return;
     }
 
+    await ensureDataBranchExists();
     const { data: remoteData } = await fetchCloudDataWithSha();
     const userRoomKey = await hashProfileRoom(currentProfile);
     const userSlot = remoteData.vaults ? remoteData.vaults[userRoomKey] : null;
@@ -863,7 +900,7 @@
     const ok = await saveUserSlotToCloud(userPayload);
     if (ok) {
       localStorage.setItem('yantra_cached_items', JSON.stringify(userVaultItems));
-      alert(`✅ '${title}' saved! '${currentProfile}' ka data GitHub par private encrypted hai.`);
+      alert(`✅ '${title}' saved! data-storage branch par silent sync ho gaya (Pages redeploy nahi hoga).`);
     }
   }
 
@@ -929,7 +966,7 @@
     document.getElementById('step-passphrase').style.display = 'block';
     document.getElementById('step-token').style.display = 'none';
     document.getElementById('inp-sync-pass').value = '';
-    document.getElementById('lbl-detected-target').innerText = `Target: ${GH_OWNER} / ${GH_REPO}`;
+    document.getElementById('lbl-detected-target').innerText = `Target: ${GH_OWNER} / ${GH_REPO} (${GH_DATA_BRANCH})`;
   }
 
   function verifyPassphrase() {
@@ -1644,7 +1681,6 @@
     img.src = url;
   }
 
-  // Auto Init
   if (currentProfile) {
     document.getElementById('vault-user-lbl').innerText = `Profile: ${currentProfile}`;
   }
